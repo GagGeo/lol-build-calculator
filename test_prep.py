@@ -1,6 +1,6 @@
 import unittest
 
-from prep import parse_item_stats, build_items, build_runes
+from prep import parse_item_stats, build_items, build_runes, build_champions, diff_patches
 
 CLEAVER = ("<mainText><stats><attention>45</attention> Attack Damage<br>"
            "<attention>400</attention> Health<br><attention>20</attention> Ability Haste"
@@ -126,6 +126,54 @@ class BuildRunes(unittest.TestCase):
         self.assertEqual(runes["byId"]["8112"], {"id": 8112, "name": {"en": "Electrocute", "fr": "Électrocution"},
                                                  "desc": {"en": "L", "fr": "LF"}, "tree": 8100, "row": 0})
         self.assertEqual(runes["byId"]["8126"]["row"], 1)
+
+
+def _champ(cid, name, title):
+    return {"id": cid, "key": "1", "name": name, "title": title, "partype": "Mana", "stats": {
+        "hp": 560, "hpperlevel": 96, "mp": 418, "mpperlevel": 25, "movespeed": 335, "armor": 19,
+        "armorperlevel": 4.7, "spellblock": 30, "spellblockperlevel": 1.3, "attackrange": 625,
+        "hpregen": 5.5, "hpregenperlevel": 0.55, "mpregen": 8, "mpregenperlevel": 0.8, "crit": 0,
+        "critperlevel": 0, "attackdamage": 50, "attackdamageperlevel": 2.65, "attackspeedperlevel": 1.36,
+        "attackspeed": 0.61}}
+
+
+DD_CH = {"data": {"Annie": _champ("Annie", "Annie", "the Dark Child"), "Zed": _champ("Zed", "Zed", "the Master")}}
+DD_CH_FR = {"data": {"Annie": _champ("Annie", "Annie", "l'Enfant obscur"), "Zed": _champ("Zed", "Zed", "le Maître")}}
+RECORDS = {"Annie": {"attackSpeedRatioModifiable": {"baseValue": 0.625},
+                     "mAdaptiveForceToAbilityPowerWeight": 1.0},
+           "Zed": None}
+
+
+class BuildChampions(unittest.TestCase):
+    def setUp(self):
+        self.champs, self.report = build_champions(DD_CH, DD_CH_FR, RECORDS)
+
+    def test_champion_base_and_ratio(self):
+        c = self.champs["Annie"]
+        self.assertEqual(c["base"]["asratio"], 0.625)
+        self.assertTrue(c["adaptiveAP"])
+        self.assertEqual(c["base"]["mr"], 30)
+        self.assertEqual(c["base"]["ad"], 50)
+        self.assertEqual(c["base"]["as"], 0.61)
+        self.assertEqual(c["base"]["asperlevel"], 1.36)
+        self.assertEqual(c["base"]["ms"], 335)
+        self.assertEqual(c["title"], {"en": "the Dark Child", "fr": "l'Enfant obscur"})
+        self.assertEqual(c["resource"], "Mana")
+        self.assertEqual(c["flags"], [])
+
+    def test_missing_record_falls_back_and_flags(self):
+        c = self.champs["Zed"]
+        self.assertEqual(c["base"]["asratio"], 0.61)
+        self.assertFalse(c["adaptiveAP"])
+        self.assertIn("no_cdragon_record", c["flags"])
+        self.assertTrue(any("Zed" in line for line in self.report))
+
+
+class DiffPatches(unittest.TestCase):
+    def test_diff_lists_changed_new_removed(self):
+        self.assertEqual(diff_patches({"items": {"1": {"stats": {"ad": 10}}, "3": {}}, "champions": {}},
+                                      {"items": {"1": {"stats": {"ad": 12}}, "2": {}}, "champions": {}}),
+                         ["changed item 1", "new item 2", "removed item 3"])
 
 
 if __name__ == "__main__":
