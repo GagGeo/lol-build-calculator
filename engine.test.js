@@ -508,3 +508,52 @@ test('at most 60 builds, best first', () => {
   assert.ok(b.length <= 60);
   for (let i = 1; i < b.length; i++) assert.ok(b[i - 1].value >= b[i].value);
 });
+
+// Stage 4, Task 2: rank champions.
+test('one row per champion, best champion first, count honoured', () => {
+  const r = Engine.rankStat(DR, {stat: 'hp', level: 18, count: 3}).rows;
+  assert.equal(r.length, 3);
+  assert.equal(new Set(r.map((x) => x.champ)).size, 3);
+  assert.equal(r[0].champ, 'Tanky');
+  assert.equal(r[0].rank, 1);
+});
+test('health shards: level-scaling health beats flat at level 18', () =>
+  assert.deepEqual(Engine.rankStat(DR, {stat: 'hp', level: 18, count: 1}).rows[0].runes.shards.slice(1), [5001, 5001]));
+test('rune pages are legal and complete', () => {
+  for (const row of Engine.rankStat(DR, {stat: 'hp', level: 18, count: 50}).rows) {
+    assert.deepEqual(Engine.validateRunePage(DR, row.runes), []);
+    assert.ok(row.runes.keystone !== null && row.runes.secondaryRunes.every((r) => r !== null));
+  }
+});
+test('rows are legal for their champion (no boots for Cassiopeia)', () => {
+  const rows = Engine.rankStat(DR, {stat: 'ms', level: 18, count: 50}).rows;
+  for (const row of rows) assert.deepEqual(Engine.validateBuild(DR, row.champ, row.items), []);
+  assert.ok(!rows.find((r) => r.champ === 'Cassiopeia').items.some((i) => i && DR.items[i].boots));
+});
+test('capped stat: ties share a rank, nothing over the cap', () => {
+  const rows = Engine.rankStat(DR, {stat: 'crit', level: 18, count: 50}).rows;
+  assert.ok(rows.every((r) => r.value <= 100));
+  assert.equal(rows[0].rank, rows[1].rank);
+});
+test('stacks off by default, on when asked', () => {
+  const ap = (o) => Engine.rankStat(DR, {stat: 'ap', level: 18, count: 50, ...o}).rows.find((r) => r.champ === 'Veigar').value;
+  assert.ok(ap({stacks: 100}) > ap({}));
+});
+test('mana ranks only mana users', () =>
+  assert.ok(Engine.rankStat(DR, {stat: 'mp', level: 18, count: 50}).rows.every((r) => DR.champions[r.champ].resource === 'Mana')));
+test('gold limit below every item: base stats, no error', () =>
+  assert.ok(Engine.rankStat(DR, {stat: 'hp', level: 18, maxGold: 100}).rows.every((r) => r.items.every((i) => !i))));
+test('partly counted flags', () => {
+  const row = Engine.rankStat(DR, {stat: 'ad', level: 18, count: 1}).rows[0];
+  assert.ok(row.items.includes('eh'));
+  assert.ok(row.flags.includes('partly_counted:item:eh'));
+});
+test('count is clamped to 1..50 and defaults to 10', () => {
+  assert.equal(Engine.rankStat(DR, {stat: 'hp'}).rows.length, 10);
+  assert.equal(Engine.rankStat(DR, {stat: 'hp', count: 0}).rows.length, 1);
+});
+test('no NaN for any rankable stat', () => {
+  for (const stat of Engine.RANKABLE_STATS) {
+    assert.ok(Engine.rankStat(DR, {stat, level: 18}).rows.every((r) => Number.isFinite(r.value)), stat);
+  }
+});

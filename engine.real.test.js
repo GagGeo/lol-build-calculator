@@ -67,3 +67,21 @@ test('every champion gives real numbers at levels 1 and 18, alone and in a combo
     }
   }
 });
+
+test('rankings on real data (any patch): fast, legal, sorted, sensible', () => {
+  for (const stat of ['hp', 'ms', 'ap']) {
+    const t0 = Date.now();
+    const {rows} = Engine.rankStat(D, {stat, level: 18});
+    assert.ok(Date.now() - t0 < 3000, `${stat} took ${Date.now() - t0} ms`);
+    assert.equal(rows.length, 10);
+    for (let i = 0; i < rows.length; i++) {
+      assert.deepEqual(Engine.validateBuild(D, rows[i].champ, rows[i].items), [], `${stat} ${rows[i].champ}`);
+      if (i) assert.ok(rows[i - 1].value >= rows[i].value);
+    }
+    if (stat === 'hp') {
+      const bestBase = Math.max(...Object.keys(D.champions).map((c) =>
+        Engine.championStats(D, {champ: c, level: 18, items: [], runes: null, stacked: false, stacks: 0}).total.hp));
+      assert.ok(rows[0].value >= bestBase + 4000, `${rows[0].value} vs base ${bestBase}`);
+    }
+  }
+});

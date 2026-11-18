@@ -665,7 +665,90 @@ const Engine = (() => {
       .map((b) => ({items: padSix(b.items), value: b.value, cost: b.cost}));
   }
 
-  return {RANKABLE_STATS, bestBuilds, adviseBuys, rankBuys, purchase, growth, clampLevel, championStats, ultRank, validateBuild, allowedItems, pruneBuild,
+  // The legal rune page (and shards) that adds the most to one stat for this champion and build.
+  // Only runes whose stat rules touch the stat are worth trying; other rows take their first rune.
+  function bestRunePage(data, sel, stat) {
+    const rules = data.rules;
+    const touches = (e) => (e.always || sel.stacked) && (e.op === 'jack' ? ['ah', 'ad', 'ap'].includes(stat)
+      : e.stat === stat || (e.stat === 'adaptive' && (stat === 'ad' || stat === 'ap')));
+    const options = (ids) => {
+      const helpful = ids.filter((id) => (rules.runeStats[id] || []).some(touches));
+      return helpful.length ? helpful : [ids[0]];
+    };
+    const value = (page) => championStats(data, {...sel, runes: page}).total[stat] || 0;
+    const firstShards = rules.shardRows.map((row) => row[0]);
+    let best = null, bestValue = -Infinity;
+    for (const primary of data.runes.trees) {
+      const [ks, r1, r2, r3] = primary.slots.map(options);
+      for (const secondary of data.runes.trees) {
+        if (secondary.id === primary.id) continue;
+        const pairs = [];
+        for (let a = 1; a <= 3; a++) {
+          for (let b = a + 1; b <= 3; b++) {
+            for (const x of options(secondary.slots[a])) for (const y of options(secondary.slots[b])) pairs.push([x, y]);
+          }
+        }
+        for (const k of ks) for (const a of r1) for (const b of r2) for (const c of r3) for (const pair of pairs) {
+          const page = {primary: primary.id, keystone: k, primaryRunes: [a, b, c], secondary: secondary.id,
+            secondaryRunes: pair, shards: firstShards};
+          const v = value(page);
+          if (v > bestValue + 1e-9) { best = page; bestValue = v; }
+        }
+      }
+    }
+    const shards = firstShards.slice();
+    rules.shardRows.forEach((row, i) => {
+      let rowBest = -Infinity;
+      for (const s of row) {
+        const trial = shards.slice();
+        trial[i] = s;
+        const v = value({...best, shards: trial});
+        if (v > rowBest + 1e-9) { rowBest = v; shards[i] = s; }
+      }
+    });
+    return {...best, shards};
+  }
+
+  // One row per champion: their best build (from the shared best builds, or their own search when none is
+  // legal for them), plus the best rune page; ranked by the stat, ties share a rank.
+  function rankStat(data, opts) {
+    const t0 = Date.now();
+    const stat = opts.stat;
+    const level = clampLevel(opts.level ?? 18);
+    const count = Math.min(50, Math.max(1, Math.round(Number(opts.count ?? 10)) || 1));
+    const stacked = opts.stacked ?? true;
+    const stacks = Math.max(0, Math.round(Number(opts.stacks)) || 0);
+    const maxGold = Number(opts.maxGold) > 0 ? Number(opts.maxGold) : null;
+    const rules = data.rules;
+    const shared = bestBuilds(data, {stat, level, maxGold, stacked});
+    const rows = [];
+    for (const champ of Object.keys(data.champions)) {
+      if (stat === 'mp' && data.champions[champ].resource !== 'Mana') continue;
+      const sel = {champ, level, runes: null, stacked, stacks};
+      let builds = shared.filter((b) => validateBuild(data, champ, b.items).length === 0);
+      if (!builds.length) builds = bestBuilds(data, {stat, level, maxGold, stacked}, champ);
+      const top = builds.map((b) => ({b, v: championStats(data, {...sel, items: b.items}).total[stat] || 0}))
+        .sort((x, y) => y.v - x.v).slice(0, 3);
+      let best = null;
+      for (const {b} of top) {
+        const runes = bestRunePage(data, {...sel, items: b.items}, stat);
+        const v = championStats(data, {...sel, items: b.items, runes}).total[stat] || 0;
+        if (!best || v > best.value) best = {items: b.items, runes, value: v};
+      }
+      const flags = [...new Set(best.items.filter((i) => i && (rules.itemStatPassivesUnknown || []).includes(i)))]
+        .map((i) => 'partly_counted:item:' + i);
+      if ((rules.championStatsUnknown || []).includes(champ)) flags.push('partly_counted:champion:' + champ);
+      rows.push({champ, level, value: best.value, items: best.items, runes: best.runes, flags});
+    }
+    const name = (c) => data.champions[c].name.en;
+    rows.sort((a, b) => b.value - a.value || name(a.champ).localeCompare(name(b.champ)));
+    rows.forEach((r, i) => {
+      r.rank = i && Math.round(r.value * 10) === Math.round(rows[i - 1].value * 10) ? rows[i - 1].rank : i + 1;
+    });
+    return {rows: rows.slice(0, count), ms: Date.now() - t0};
+  }
+
+  return {RANKABLE_STATS, bestBuilds, bestRunePage, rankStat, adviseBuys, rankBuys, purchase, growth, clampLevel, championStats, ultRank, validateBuild, allowedItems, pruneBuild,
           validateRunePage, normalizeRunePage, buildCost, goldWarning, evalCalc, skillRanks,
           mitigate, autoAttack, spellDamage, runCombo, DEFAULT_COMBO, clampPct};
 })();
