@@ -148,6 +148,39 @@ RULES = {
     "itemDamageUnknown": [
         "2502", "2510", "2512", "2520", "2523", "3050", "3068", "3087", "3091", "3094", "3095", "3118", "3144",
         "3145", "3161", "3181", "3302", "3877", "4646", "6610", "6660", "6664", "6672", "6676", "6699"],
+    # --- Stage 3: buy advisor -----------------------------------------------------------------------
+    # Items whose main value is a shield, heal, stasis, revive, cleanse or help for allies: listed apart, not ranked
+    # (their combat value isn't in the damage/survival scores, so a ranking would undersell them).
+    "advisorNotScored": [
+        "2502",  # Unending Despair: drain heal
+        "2504",  # Kaenic Rookern: magic shield
+        "2525",  # Protoplasm Harness: low-health max HP and heal
+        "3026",  # Guardian Angel: revive
+        "3053",  # Sterak's Gage: low-health shield
+        "3065",  # Spirit Visage: +25% heals and shields
+        "3072",  # Bloodthirster: lifesteal shield
+        "3102",  # Banshee's Veil: spell shield
+        "3107",  # Redemption: ally heal
+        "3109",  # Knight's Vow: protects an ally
+        "3137",  # Cryptbloom: heal nova
+        "3156",  # Maw of Malmortius: magic shield
+        "3157",  # Zhonya's Hourglass: stasis
+        "3190",  # Locket of the Iron Solari: ally shield
+        "3222",  # Mikael's Blessing: ally cleanse
+        "3504",  # Ardent Censer: ally buff
+        "3814",  # Edge of Night: spell shield
+        "3870",  # Dream Maker: ally buff
+        "3876",  # Solstice Sleigh: ally heal and speed
+        "6333",  # Death's Dance: damage delay and heal
+        "6616",  # Staff of Flowing Water: ally buff
+        "6617",  # Moonstone Renewer: chained heals
+        "6620",  # Echoes of Helia: ally heal
+        "6673",  # Immortal Shieldbow: low-health shield
+        "6692",  # Eclipse: shield
+    ],
+    # Flagged items whose heal/shield text is a side note; their stats and damage are scored normally.
+    "advisorScored": ["2501", "2510", "2522", "2526", "3036", "3083", "3084", "3119", "3153", "4633", "4645", "4646",
+                      "6610", "6621", "6653", "6657", "6672", "6676", "6694", "6695", "6699"],
     # Permanent stat per stack. Value forms: number per stack; {"per": n, "value": v} = v every n stacks;
     # {"byRRank": [r1, r2, r3]} = per stack, by ultimate rank (R at levels 6/11/16).
     # Values from CommunityDragon champion files, 16.23.

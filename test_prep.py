@@ -102,6 +102,14 @@ class BuildItems(unittest.TestCase):
         self.assertEqual(self.items["3599"]["requiredChampion"], "Kalista")
         self.assertIsNone(self.items["1036"]["requiredChampion"])
 
+    def test_plaintext_in_both_languages(self):
+        en = {"data": {**EN["data"], "3071": {**EN["data"]["3071"], "plaintext": "Shields against large bursts of damage"}}}
+        fr = {"data": {**FR["data"], "3071": {**FR["data"]["3071"], "plaintext": "Protège contre les gros bursts de dégâts."}}}
+        items, _, _ = build_items(en, fr, BIN)
+        self.assertEqual(items["3071"]["plaintext"], {"en": "Shields against large bursts of damage",
+                                                      "fr": "Protège contre les gros bursts de dégâts."})
+        self.assertEqual(items["1036"]["plaintext"], {"en": "", "fr": ""})
+
     def test_report_lists_unknown_stats_and_stat_object_mismatch(self):
         text = "\n".join(self.report)
         self.assertIn("unknown stat 'Foo Bar' in item 6666", text)

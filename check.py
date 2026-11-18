@@ -26,7 +26,11 @@ for i in todo_dmg_items:
     print(f"REVIEW item damage {i} {D['items'][i]['name']['en']}: add to itemDamage, itemDamageNone or itemDamageUnknown in rules.py")
 for r in todo_dmg_runes:
     print(f"REVIEW rune damage {r} {D['runes']['byId'][r]['name']['en']}: add to runeDamage, runeDamageNone or runeDamageUnknown in rules.py")
-if todo_dmg_items or todo_dmg_runes:
+survival_sorted = set(R.get("advisorNotScored", [])) | set(R.get("advisorScored", []))
+todo_survival = [i for i in D["review"].get("possibleSurvival", []) if i not in survival_sorted]
+for i in todo_survival:
+    print(f"REVIEW survival item {i} {D['items'][i]['name']['en']}: add to advisorNotScored or advisorScored in rules.py")
+if todo_dmg_items or todo_dmg_runes or todo_survival:
     sys.exit(1)
 if todo_items or todo_runes:
     for i in todo_items:
@@ -39,7 +43,8 @@ if todo_items or todo_runes:
 # A hand rule whose item, rune or champion changed this patch may be stale.
 if R.get("rulesCheckedForPatch") != D["patch"]:
     changed = D["review"].get("changed", {})
-    ruled_items = set(R["itemStatPassives"]) | set(R["itemStatPassivesUnknown"]) | set(R.get("itemDamage", {}))
+    ruled_items = (set(R["itemStatPassives"]) | set(R["itemStatPassivesUnknown"]) | set(R.get("itemDamage", {}))
+                   | set(R.get("advisorNotScored", [])))
     ruled_champs = set(R["stackers"]) | set(R.get("championStatsUnknown", []))
     stale = ([f"item {i} {D['items'][i]['name']['en']}" for i in changed.get("item", []) if i in ruled_items]
              + [f"rune {r} {D['runes']['byId'][r]['name']['en']}" for r in changed.get("rune", []) if r in R["runeStats"] or r in R.get("runeDamage", {})]

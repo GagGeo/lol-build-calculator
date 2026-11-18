@@ -125,6 +125,7 @@ def build_items(dd_en, dd_fr, items_bin):
             "id": iid,
             "name": {"en": en["name"], "fr": fr["name"]},
             "desc": {"en": en["description"], "fr": fr["description"]},
+            "plaintext": {"en": en.get("plaintext") or "", "fr": fr.get("plaintext") or ""},
             "gold": {"total": en["gold"]["total"], "base": en["gold"]["base"]},
             "from": en.get("from", []),
             "into": en.get("into", []),
@@ -574,10 +575,14 @@ def main(argv):
     damage_words = re.compile(r"damag|critical", re.I)  # "damage", "Damaging", "Critically Strikes"
     possible_item_damage = sorted(i for i, it in items.items() if damage_words.search(outside_stats(it["desc"]["en"])))
     possible_rune_damage = sorted(k for k, r in runes["byId"].items() if damage_words.search(TAG.sub(" ", r["desc"]["en"])))
+    survival_words = re.compile(r"shield|heal|restore|stasis|revive|cleanse|Lifeline", re.I)
+    possible_survival = sorted(i for i, it in items.items()
+                               if it["tier"] == 5 and survival_words.search(outside_stats(it["desc"]["en"])))
     data = {"patch": patch, "champions": champions, "items": items, "groups": groups, "runes": runes,
             "rules": RULES, "review": {"possibleStatPassives": possible_passives, "possibleRuneStats": possible_runes,
                                        "possibleItemDamage": possible_item_damage,
-                                       "possibleRuneDamage": possible_rune_damage}}
+                                       "possibleRuneDamage": possible_rune_damage,
+                                       "possibleSurvival": possible_survival}}
 
     out_dir = root / "data"
     out_dir.mkdir(exist_ok=True)
@@ -612,6 +617,8 @@ def main(argv):
          [f"{i} {items[i]['name']['en']}" for i in possible_item_damage]),
         ("Possible rune damage effects (review in rules.py)",
          [f"{k} {runes['byId'][k]['name']['en']}" for k in possible_rune_damage]),
+        ("Possible survival items for the advisor (review in rules.py)",
+         [f"{i} {items[i]['name']['en']}" for i in possible_survival]),
         ("Missing CommunityDragon records", champ_report),
         ("CommunityDragon fallbacks", report),
         (f"Changes since {previous[-1].stem}" if previous else "Changes (no previous patch)", diff),
