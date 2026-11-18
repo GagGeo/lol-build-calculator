@@ -212,3 +212,64 @@ test('spell without damage lines', () => {
   const r = Engine.spellDamage(D2, side(), tgt(), 'P');
   assert.equal(r.noDamage, true); assert.equal(r.damage, 0);
 });
+
+// Stage 2, Task 5: combo.
+const plainItem = (id) => ({id, name: {en: id, fr: id}, desc: {en: '', fr: ''}, gold: {total: 0, base: 0}, from: [], into: [],
+  tier: 5, groups: [], boots: false, requiredChampion: null, stats: {}});
+const D3 = {...D2,
+  items: {...D2.items, ...Object.fromEntries(['kraken', 'sheen', 'luden', 'cdg', 'ldr', 'cleaver'].map((id) => [id, plainItem(id)]))},
+  rules: {...D2.rules,
+    runeDamage: {101: [{kind: 'proc', hits: 3, type: 'true', base: 100}], 102: [{kind: 'proc', hits: 1, type: 'adaptive', base: 100}]},
+    itemDamage: {
+      kraken: [{kind: 'onHit', every: 3, type: 'true', base: 50}],
+      sheen: [{kind: 'spellblade', type: 'physical', base: 0, ratios: {baseAd: 1}}],
+      luden: [{kind: 'afterSpell', type: 'magic', base: 40}],
+      cdg: [{kind: 'amp', pct: 0.1, condition: 'targetBelow:40', applies: 'all'}],
+      ldr: [{kind: 'amp', pct: 0.15, condition: 'targetBonusHp:1500', applies: 'all'}],
+      cleaver: [{kind: 'shred', stat: 'armor', pctPerStack: 0.06, maxStacks: 5, on: 'physical'}],
+    },
+    runeDamageNone: [], runeDamageUnknown: [], itemDamageNone: [], itemDamageUnknown: ['eh'],
+  }};
+const attackerSide = (o = {}) => {
+  const sel = {champ: 'Annie', level: o.level ?? 1, items: o.items || [], runes: o.runes || null, stacked: false, stacks: 0};
+  return {...sel, priority: ['Q', 'W', 'E'], stats: Engine.championStats(D3, sel)};
+};
+const combo = (o = {}, steps = Engine.DEFAULT_COMBO) => Engine.runCombo(D3, attackerSide(o),
+  {champ: 'Testo', stats: {base: {}, bonus: {hp: o.bonusHp || 0}, total: {hp: o.maxHp ?? 1000, armor: o.armor || 0, mr: 0}},
+   currentHpPct: o.currentHpPct ?? 100}, steps);
+const keystonePage = (id) => ({...VALID_PAGE, keystone: id, shards: [5005, 5010, 5011]}); // no adaptive shard
+
+test('current hp clamped', () => {
+  near(combo({currentHpPct: 0}).hpStart, 10);
+  near(combo({currentHpPct: 250}).hpStart, 1000);
+  near(combo({currentHpPct: 'x'}).hpStart, 1000);
+});
+test('kills at step and stops', () => {
+  const r = combo({currentHpPct: 5});
+  assert.equal(r.killsAt, 1); assert.equal(r.rows.length, 1); assert.equal(r.hpLeft, 0);
+});
+test('missing health spell last sees damage already dealt', () =>
+  near(combo({level: 6, maxHp: 2000}, [{spell: 'Q'}, {spell: 'R'}]).rows[1].damage, 150 + 0.25 * 170)); // Q is rank 3 at level 6
+test('unlearned spell row says not learned and adds nothing', () => {
+  const r = combo({}, [{spell: 'R'}]);
+  assert.ok(r.rows[0].notes.includes('not_learned')); near(r.hpLeft, 1000);
+});
+test('unsupported spell is excluded and listed', () => {
+  const r = combo({level: 2}, [{spell: 'W'}]);
+  assert.deepEqual(r.excluded, ['W']); near(r.hpLeft, 1000);
+});
+test('proc triggers once on third hit', () => near(combo({runes: keystonePage(101)}, [{autos: 5}]).hpLeft, 1000 - 300 - 100));
+test('onHit every 3rd attack', () => near(combo({items: ['kraken']}, [{autos: 6}]).hpLeft, 1000 - 360 - 100));
+test('spellblade after each spell, once', () =>
+  near(combo({items: ['sheen']}, [{spell: 'Q'}, {autos: 2}, {spell: 'Q'}, {autos: 1}]).hpLeft, 1000 - 460));
+test('afterSpell once', () => near(combo({items: ['luden']}, [{spell: 'Q'}, {spell: 'Q'}]).hpLeft, 1000 - 200));
+test('amp targetBelow only under threshold', () => {
+  near(combo({items: ['cdg'], currentHpPct: 30}, [{spell: 'Q'}]).rows[0].damage, 88);
+  near(combo({items: ['cdg']}, [{spell: 'Q'}]).rows[0].damage, 80);
+});
+test('amp targetBonusHp scales', () => near(combo({items: ['ldr'], bonusHp: 750}, [{autos: 1}]).rows[0].damage, 64.5));
+test('shred lowers resist for later steps only', () =>
+  near(combo({items: ['cleaver'], armor: 100}, [{autos: 2}]).rows[0].damage, 30 + 60 * 100 / 194));
+test('adaptive proc picks physical for AD champion', () =>
+  near(combo({items: ['ls'], runes: keystonePage(102), armor: 100}, [{autos: 1}]).rows[0].damage, 70 * 100 / 200 + 50));
+test('unknown item damage effect is flagged', () => assert.ok(combo({items: ['eh']}).flags.includes('unknown_damage:item:eh')));

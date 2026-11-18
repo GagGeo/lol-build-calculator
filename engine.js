@@ -314,7 +314,7 @@ const Engine = (() => {
     return {nonCrit: hit(ad), crit: hit(ad * mult), average: hit(ad * (1 + chance * (mult - 1)))};
   }
 
-  function spellDamage(data, side, target, key, lineIndex = 0) {
+  function spellDamage(data, side, target, key, lineIndex = 0, shred = {armor: 0, mr: 0}) {
     const champ = data.champions[side.champ];
     const spell = champ.spells.find((s) => s.key === key);
     const rank = key === 'P' ? 1 : skillRanks(champ, side.level, side.priority)[key];
@@ -345,9 +345,145 @@ const Engine = (() => {
     return {learned: true, rank, raw, damage: mitigate(raw, line.type, side.stats, target.stats), type: line.type, unsupported};
   }
 
+  const DEFAULT_COMBO = [{spell: 'Q'}, {spell: 'W'}, {spell: 'E'}, {autos: 3}, {spell: 'R'}];
+
+  const clampPct = (v) => {
+    const n = Number(v);
+    return Number.isFinite(n) ? Math.min(100, Math.max(1, n)) : 100;
+  };
+
+  // The combo in order against the target's running HP, with hand-written rune and item damage effects.
+  function runCombo(data, attacker, target, steps) {
+    const rules = data.rules;
+    const champ = data.champions[attacker.champ];
+    const a = attacker.stats;
+    const maxHp = target.stats.total.hp || 0;
+    const hpStart = maxHp * clampPct(target.currentHpPct) / 100;
+    const flags = [];
+    const effects = [];
+    for (const id of (attacker.items || []).filter(Boolean)) {
+      for (const e of (rules.itemDamage || {})[id] || []) effects.push({...e, source: 'item:' + id});
+      if ((rules.itemDamageUnknown || []).includes(id)) flags.push('unknown_damage:item:' + id);
+    }
+    const runeIds = attacker.runes ? [attacker.runes.keystone, ...(attacker.runes.primaryRunes || []),
+      ...(attacker.runes.secondaryRunes || [])].filter((x) => x !== null && x !== undefined) : [];
+    for (const id of runeIds) {
+      for (const e of (rules.runeDamage || {})[id] || []) effects.push({...e, source: 'rune:' + id});
+      if ((rules.runeDamageUnknown || []).includes(String(id))) flags.push('unknown_damage:rune:' + id);
+    }
+    const of = (kind) => effects.filter((e) => e.kind === kind);
+
+    let hp = hpStart, hits = 0, autos = 0, spellbladeReady = false, afterSpellDone = false, killsAt = null;
+    const shred = {armor: 0, mr: 0}, shredStacks = {}, procsDone = new Set();
+    const rows = [], excluded = [];
+    const level = clampLevel(attacker.level);
+    const adaptiveType = () => {
+      const ad = a.bonus.ad || 0, ap = a.total.ap || 0;
+      return ad > ap ? 'physical' : ad < ap ? 'magic' : champ.adaptiveAP ? 'magic' : 'physical';
+    };
+    const ratioSource = {ad: () => a.total.ad, bonusAd: () => a.bonus.ad, baseAd: () => a.base.ad, ap: () => a.total.ap,
+      hp: () => a.total.hp, bonusHp: () => a.bonus.hp, targetMaxHp: () => maxHp, targetCurrentHp: () => hp,
+      targetMissingHp: () => maxHp - hp};
+    const effectRaw = (e) => {
+      const base = Array.isArray(e.base) ? e.base[0] + (e.base[1] - e.base[0]) * (level - 1) / 17 : e.base || 0;
+      return base + Object.entries(e.ratios || {}).reduce((s, [k, v]) => s + v * ((ratioSource[k] || (() => 0))() || 0), 0);
+    };
+    const ampFactor = (source, type) => {
+      let f = 1;
+      for (const e of of('amp')) {
+        const applies = e.applies || 'all';
+        if (applies === 'spells' && source !== 'spell') continue;
+        if (applies === 'autos' && source !== 'auto') continue;
+        if (applies === 'magicTrue' && type !== 'magic' && type !== 'true') continue;
+        const [cond, arg] = (e.condition || 'always').split(':');
+        let pct = 0;
+        if (cond === 'always') pct = e.pct;
+        else if (cond === 'targetBelow') pct = (hp / maxHp) * 100 < Number(arg) ? e.pct : 0;
+        else if (cond === 'targetBonusHp') pct = e.pct * Math.min(1, (target.stats.bonus.hp || 0) / Number(arg));
+        else if (cond === 'afterHits') pct = hits >= Number(arg) ? e.pct : 0;
+        else if (cond === 'targetMoreMaxHp') {
+          const diff = (maxHp - a.total.hp) / a.total.hp;
+          const [lo, hi] = e.pct;
+          pct = diff < 0.1 ? 0 : lo + (hi - lo) * Math.min(1, (diff - 0.1) / 0.9);
+        }
+        f *= 1 + pct;
+      }
+      return f;
+    };
+    // One damage instance: mitigate with the running shred, amplify, subtract; returns the damage dealt.
+    const deal = (raw, type, source) => {
+      const t = type === 'adaptive' ? adaptiveType() : type;
+      const dmg = mitigate(raw, t, a, target.stats, shred) * ampFactor(source, t);
+      hp -= dmg;
+      return {dmg, type: t};
+    };
+    const afterHit = (type, notes) => {
+      hits++;
+      for (const e of of('proc')) {
+        if (!procsDone.has(e) && hits >= (e.hits || 1)) {
+          procsDone.add(e);
+          notes.push('proc:' + e.source);
+          return deal(effectRaw(e), e.type, 'effect').dmg;
+        }
+      }
+      return 0;
+    };
+    const applyShred = (type) => {
+      for (const e of of('shred')) {
+        if (e.on !== type) continue;
+        shredStacks[e.source] = Math.min(e.maxStacks, (shredStacks[e.source] || 0) + 1);
+        shred[e.stat] = Math.max(shred[e.stat], shredStacks[e.source] * e.pctPerStack);
+      }
+    };
+
+    steps.forEach((step, i) => {
+      if (killsAt !== null) return;
+      const notes = [];
+      let damage = 0;
+      if (step.spell) {
+        const r = spellDamage(data, attacker, {stats: target.stats, currentHp: hp}, step.spell, 0, shred);
+        if (!r.learned) notes.push('not_learned');
+        else if (r.unsupported.length) { notes.push('excluded'); excluded.push(step.spell); spellbladeReady = true; }
+        else if (r.noDamage) { notes.push('no_damage'); spellbladeReady = true; }
+        else {
+          const f = ampFactor('spell', r.type);
+          hp -= r.damage * f;
+          damage += r.damage * f;
+          damage += afterHit(r.type, notes);
+          applyShred(r.type);
+          spellbladeReady = true;
+          if (!afterSpellDone) {
+            for (const e of of('afterSpell')) { damage += deal(effectRaw(e), e.type, 'effect').dmg; notes.push('effect:' + e.source); }
+            afterSpellDone = true;
+          }
+        }
+      } else {
+        const count = Math.max(0, Math.round(Number(step.autos)) || 0);
+        const mult = rules.critBase + (a.bonus.critDmg || 0) / 100;
+        const chance = Math.min(100, a.total.crit || 0) / 100;
+        for (let n = 0; n < count && hp > 0; n++) {
+          autos++;
+          damage += deal((a.total.ad || 0) * (1 + chance * (mult - 1)), 'physical', 'auto').dmg;
+          for (const e of of('onHit')) {
+            if (autos % (e.every || 1) === 0) damage += deal(effectRaw(e), e.type, 'auto').dmg;
+          }
+          if (spellbladeReady) {
+            for (const e of of('spellblade')) { damage += deal(effectRaw(e), e.type, 'auto').dmg; notes.push('effect:' + e.source); }
+            spellbladeReady = false;
+          }
+          damage += afterHit('physical', notes);
+          applyShred('physical');
+        }
+      }
+      if (hp <= 0 && killsAt === null) { killsAt = i + 1; notes.push('kills'); }
+      rows.push({step: i + 1, label: step.spell || 'A×' + step.autos, damage, hpAfter: Math.max(0, hp), notes});
+    });
+    return {rows, hpStart, hpLeft: Math.max(0, hp), killsAt, excluded, flags};
+  }
+
   return {growth, clampLevel, championStats, ultRank, validateBuild, allowedItems, pruneBuild,
           validateRunePage, normalizeRunePage, buildCost, goldWarning, evalCalc, skillRanks,
-          mitigate, autoAttack, spellDamage};
+          mitigate, autoAttack, spellDamage, runCombo, DEFAULT_COMBO, clampPct};
 })();
 
 if (typeof module === 'object') module.exports = Engine;
