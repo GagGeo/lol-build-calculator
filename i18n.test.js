@@ -25,7 +25,7 @@ test('stage 2 labels exist in both languages', () => {
   for (const k of ['enemy', 'currentHp', 'skillOrder', 'combo', 'autos', 'notLearned', 'kills', 'hpLeft', 'damageTo',
                    'noDamage', 'excludedNote', 'customRanks', 'type_physical', 'type_magic', 'type_true', 'addStep',
                    'resetCombo', 'moveUp', 'moveDown', 'remove', 'basicAttack', 'nonCrit', 'crit', 'average', 'rank',
-                   'unknownDamage', 'killsAt', 'leaves', 'passive', 'step', 'damage', 'perHit', 'perHitNote']) {
+                   'unknownDamage', 'killsAt', 'leaves', 'passive', 'step', 'damage', 'perHit', 'perHitNote', 'checkInGame', 'comboLine', 'partNote']) {
     assert.ok(I18N.LABELS.en[k] && I18N.LABELS.fr[k], k);
   }
 });

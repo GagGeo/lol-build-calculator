@@ -319,28 +319,38 @@ const Engine = (() => {
     const spell = champ.spells.find((s) => s.key === key);
     const rank = key === 'P' ? 1 : skillRanks(champ, side.level, side.priority)[key];
     if (!rank) return {learned: false, rank: 0, raw: 0, damage: 0, type: null, unsupported: []};
-    const unsupported = spell.flags.filter((f) => f === 'unparsed_tooltip');
+    // A spell whose description or game data is missing can't be trusted, even if some lines were read.
+    const unsupported = spell.flags.filter((f) => ['unparsed_tooltip', 'no_tooltip', 'no_cdragon_spell'].includes(f));
     const line = spell.lines[lineIndex];
-    if (!line) return {learned: true, rank, raw: 0, damage: 0, type: null, noDamage: true, unsupported};
+    if (!line) {
+      return unsupported.length ? {learned: true, rank, raw: 0, damage: 0, type: null, unsupported}
+        : {learned: true, rank, raw: 0, damage: 0, type: null, noDamage: true, unsupported};
+    }
     const ctx = {rank, level: clampLevel(side.level), stats: side.stats, rules: data.rules};
     const maxHp = target.stats.total.hp || 0;
     const current = target.currentHp ?? maxHp;
     let raw = 0;
+    if (line.varies) unsupported.push('damage varies with missing health');
     for (const term of line.terms) {
-      let v;
+      let v, pct = false;
       if (term.calc) {
         const r = evalCalc(spell, term.calc, ctx);
         unsupported.push(...r.unsupported);
         v = r.value;
+        pct = !!(spell.calcs[term.calc] || {}).pct;
       } else {
         const arr = spell.values[term.value] || [];
         v = arr.length ? arr[Math.min(rank, arr.length - 1)] : 0;
       }
-      // Target-health terms are fractions; values written as percentages (> 1) are divided by 100.
-      const frac = term.kind === 'flat' ? v : v > 1 ? v / 100 : v;
+      v *= term.mult ?? 1;
+      if (term.kind === 'unsupported') { unsupported.push('percentage of another base'); continue; }
+      if (term.kind === 'flat') { raw += v; continue; }
+      // Target-health terms: the number shown is a percentage when the description adds "%" or the
+      // game marks the formula as a percentage (then the raw value is a fraction).
+      if (!term.percent && !pct) { unsupported.push('target health term without a percentage'); continue; }
+      const frac = pct && !term.percent ? v : pct ? v : v / 100;
       raw += term.kind === 'targetMax' ? frac * maxHp
-        : term.kind === 'targetMissing' ? frac * (maxHp - current)
-          : term.kind === 'targetCurrent' ? frac * current : frac;
+        : term.kind === 'targetMissing' ? frac * (maxHp - current) : frac * current;
     }
     return {learned: true, rank, raw, damage: mitigate(raw, line.type, side.stats, target.stats, shred), type: line.type, unsupported,
             perHit: !!line.perHit};
@@ -349,6 +359,7 @@ const Engine = (() => {
   const DEFAULT_COMBO = [{spell: 'Q'}, {spell: 'W'}, {spell: 'E'}, {autos: 3}, {spell: 'R'}];
 
   const clampPct = (v) => {
+    if (v === '' || v === null || v === undefined) return 100;
     const n = Number(v);
     return Number.isFinite(n) ? Math.min(100, Math.max(1, n)) : 100;
   };
@@ -407,6 +418,7 @@ const Engine = (() => {
         else if (cond === 'targetAbove') pct = (hp / maxHp) * 100 > Number(arg) ? e.pct : 0;
         else if (cond === 'targetBonusHp') pct = e.pct * Math.min(1, (target.stats.bonus.hp || 0) / Number(arg));
         else if (cond === 'afterHits') pct = hits >= Number(arg) ? e.pct : 0;
+        else if (cond === 'afterAutos') pct = autos >= Number(arg) ? e.pct : 0;
         else if (cond === 'targetMoreMaxHp') {
           const diff = (maxHp - a.total.hp) / a.total.hp;
           const [lo, hi] = e.pct;

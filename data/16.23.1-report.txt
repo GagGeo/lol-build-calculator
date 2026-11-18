@@ -114,21 +114,52 @@ possible stat passive: 8010 Bloodletter's Curse
 9923 Hail of Blades
 
 == Spell coverage ==
-damage lines fully readable: 861/904 (95.2%)
+spells with damage fully readable: 558/633 (88.2%)
 
 == Spells with unparsed damage text ==
-Kaisa Q
+Elise P
+Elise W
+Fiora R
+Gnar Q
+Gnar W
+Gnar E
+Illaoi P
+Illaoi Q
+Janna W
+Jayce Q
+Jayce W
+Jayce E
+Khazix Q
+Mel P
 Mel Q
 Mel W
+Naafiri Q
+Pantheon R
+Rammus R
+RekSai E
+Rell W
 Sett W
+Skarner Q
+Smolder Q
+Smolder W
+Smolder E
+Sona P
+TahmKench Q
 Varus Q
+Vex R
+Yunara W
+Zeri P
+Zyra Q
+Zyra E
 
 == Unsupported formula parts (count) ==
-10 ByCharLevelFormulaCalculationPart
+34 unparsed text
+9 ByCharLevelFormulaCalculationPart
 8 BuffCounterByNamedDataValueCalculationPart
+7 percentage of another base
 7 EffectValueCalculationPart
 6 AbilityResourceByCoefficientCalculationPart
-6 BuffCounterByCoefficientCalculationPart
+5 BuffCounterByCoefficientCalculationPart
 5 {ee18a47b}
 1 {b22609db}
 
@@ -152,6 +183,7 @@ Varus Q
 2525 Protoplasm Harness
 3004 Manamune
 3026 Guardian Angel
+3032 Yun Tal Wildarrows
 3033 Mortal Reminder
 3036 Lord Dominik's Regards
 3047 Plated Steelcaps
@@ -178,6 +210,7 @@ Varus Q
 3107 Redemption
 3109 Knight's Vow
 3115 Nashor's Tooth
+3116 Rylai's Crystal Scepter
 3118 Malignance
 3123 Executioner's Calling
 3124 Guinsoo's Rageblade
@@ -218,6 +251,7 @@ Varus Q
 4646 Stormsurge
 6333 Death's Dance
 6609 Chempunk Chainsword
+6610 Sundered Sky
 6620 Echoes of Helia
 6631 Stridebreaker
 6653 Liandry's Torment
@@ -229,6 +263,8 @@ Varus Q
 6672 Kraken Slayer
 6673 Immortal Shieldbow
 6676 The Collector
+6694 Serylda's Grudge
+6695 Serpent's Fang
 6696 Axiom Arc
 6697 Hubris
 6698 Profane Hydra
@@ -248,6 +284,7 @@ Varus Q
 8128 Dark Harvest
 8139 Taste of Blood
 8143 Sudden Impact
+8214 Summon Aery
 8224 Axiom Arcanist
 8229 Arcane Comet
 8233 Absolute Focus

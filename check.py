@@ -76,6 +76,6 @@ assert any(t["kind"] == "targetMax" for l in C["Vayne"]["spells"][2]["lines"] fo
 report = (root / "data" / f"{D['patch']}-report.txt").read_text(encoding="utf-8")
 assert "== Unknown stats ==\n(none)" in report, "report lists unknown stat names"
 assert "== Stats object mismatches ==\n(none)" in report, "report lists stats object mismatches"
-coverage = float(report.split("damage lines fully readable: ")[1].split("(")[1].split("%")[0])
+coverage = float(report.split("spells with damage fully readable: ")[1].split("(")[1].split("%")[0])
 assert coverage >= 80, f"spell coverage fell to {coverage}%"
 print("check OK")

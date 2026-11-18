@@ -245,46 +245,81 @@ def _normalize_calc(calc):
 
 # --- Spells and damage lines ----------------------------------------------------------------------
 DAMAGE_TAG = re.compile(r"<(physicalDamage|magicDamage|trueDamage)>(.*?)</\1>", re.S)
-PLACEHOLDER = re.compile(r"\{\{\s*([A-Za-z_]\w*)\s*(?:\*\s*-?[\d.]+)?\s*\}\}|@([A-Za-z_]\w*)(?:\*-?[\d.]+)?@")
+PLACEHOLDER = re.compile(r"\{\{(.*?)\}\}|@([^@\s<>]+)@")
+SIMPLE_NAME = re.compile(r"^\s*([A-Za-z_]\w*)\s*(?:\*\s*(-?[\d.]+))?\s*$")
 DAMAGE_TYPES = {"physicalDamage": "physical", "magicDamage": "magic", "trueDamage": "true"}
+# "% max Health", " max Health", "% of the target's missing-Health", ...
+HEALTH_BASE = re.compile(r"^\s*%?\s*(?:of\s+(?:the\s+)?(?:target'?s?\s+|their\s+|its\s+)?)?(max(?:imum)?|current|missing)[- ]Health",
+                         re.I)
+NOT_REAL_DAMAGE = re.compile(r"Attack Damage|increased damage|damage amplification", re.I)
+NON_CHAMPION_AFTER = re.compile(r"^\s*(?:to|against|vs\.?)\s+(?:minions|monsters|non-champions)", re.I)
 
 
-def _term_kind(text):
-    text = TAG.sub(" ", text)
-    if re.search(r"missing Health", text, re.I):
-        return "targetMissing"
-    if re.search(r"current Health", text, re.I):
-        return "targetCurrent"
-    if re.search(r"max(imum)? Health", text, re.I):
-        return "targetMax"
-    return "flat"
+def _term_kind(after):
+    """(kind, shown as a percentage) from the text right after a placeholder."""
+    text = TAG.sub(" ", after)
+    percent = text.lstrip().startswith("%")
+    base = HEALTH_BASE.match(text)
+    if base:
+        word = base.group(1).lower()
+        return {"missing": "targetMissing", "current": "targetCurrent"}.get(word, "targetMax"), percent
+    # A percentage of something other than the target's health (bonus Health, "% damage", "per 1%...").
+    return ("unsupported", True) if percent else ("flat", False)
 
 
 def parse_damage_lines(tooltip, calc_names, value_names):
-    """Damage lines from a tooltip: each <xDamage> segment becomes {type, terms}. Returns (lines, flags)."""
+    """Damage lines from a tooltip: each <xDamage> segment against champions becomes {type, terms}.
+
+    A term is {calc|value, kind, [mult], [percent]}: `mult` is the tooltip's display multiplier
+    ({{ x*100 }}), `percent` means a "%" follows it. Returns (lines, flags)."""
     calcs = {n.lower(): n for n in calc_names}
     values = {n.lower(): n for n in value_names}
     lines, flags = [], []
+    previous_end = 0
     for match in DAMAGE_TAG.finditer(tooltip):
         tag, segment = match.group(1), match.group(2)
+        before = TAG.sub(" ", tooltip[previous_end:match.start()])[-60:]
+        following = re.sub(r"\s+", " ", TAG.sub(" ", tooltip[match.end():match.end() + 300]))
+        previous_end = match.end()
+        words = TAG.sub(" ", PLACEHOLDER.sub(" ", segment))
+        # Buffs written in damage colours ("bonus Attack Damage", "Mana", "% increased damage") aren't damage.
+        if not re.search(r"damage", NOT_REAL_DAMAGE.sub(" ", words), re.I):
+            continue
+        # Damage to minions or monsters only.
+        sentence = following.split(".")[0]
+        if (re.search(r"minion|monster", before, re.I) and not re.search(r"champion", before, re.I)) \
+                or NON_CHAMPION_AFTER.match(following) \
+                or (re.search(r"(?:against|to)\s+(?:a\s+)?(?:jungle\s+)?(?:minion|monster)", sentence, re.I)
+                    and not re.search(r"champion", sentence, re.I)):
+            continue
         found = list(PLACEHOLDER.finditer(segment))
         terms, unresolved = [], False
         for i, m in enumerate(found):
-            name = (m.group(1) or m.group(2)).lower()
+            simple = SIMPLE_NAME.match(m.group(1) if m.group(1) is not None else m.group(2))
+            name = simple.group(1).lower() if simple else None
             after = segment[m.end():found[i + 1].start() if i + 1 < len(found) else len(segment)]
             if name in calcs:
-                terms.append({"calc": calcs[name], "kind": _term_kind(after)})
+                term = {"calc": calcs[name]}
             elif name in values:
-                terms.append({"value": values[name], "kind": _term_kind(after)})
+                term = {"value": values[name]}
             else:
                 unresolved = True
+                continue
+            term["kind"], percent = _term_kind(after)
+            if simple.group(2) is not None and float(simple.group(2)) != 1:
+                term["mult"] = _num(float(simple.group(2)))
+            if percent:
+                term["percent"] = True
+            terms.append(term)
         if unresolved and "unparsed_tooltip" not in flags:
             flags.append("unparsed_tooltip")
         line = {"type": DAMAGE_TYPES[tag], "terms": terms}
         # "... physical damage {{ n }} times", "... each bounce", "per second": the number is for one hit.
-        following = TAG.sub(" ", tooltip[match.end():match.end() + 80])
-        if re.search(r"\b(times|each|per|every)\b", TAG.sub(" ", segment) + " " + following, re.I):
+        if re.search(r"\b(times|each|per|every)\b", words + " " + following, re.I):
             line["perHit"] = True
+        # "between X and Y based on missing Health", "increased by up to ...": the number shown is one end of a range.
+        if re.search(r"based on .{0,30}missing Health|increased by up to", sentence, re.I):
+            line["varies"] = True
         if terms and line not in lines:
             lines.append(line)
     return lines, flags
@@ -510,20 +545,24 @@ def main(argv):
     records = {cid: f[0] for cid, f in files.items()}
 
     champions, champ_report = build_champions(ch_en, ch_fr, records)
-    unsupported, unparsed, lines_ok, lines_all = collections.Counter(), [], 0, 0
+    unsupported, unparsed, spells_ok, spells_all = collections.Counter(), [], 0, 0
     for cid, (rec, data, dd_en, dd_fr) in files.items():
         spells = build_spells(dd_en, dd_fr, data, rec or {}, strings)
         champions[cid]["spells"] = spells
         champions[cid]["flags"] += skill_rank_flags(spells)
         for s in spells:
-            if "unparsed_tooltip" in s["flags"]:
+            if not s["lines"] and "unparsed_tooltip" not in s["flags"]:
+                continue  # no damage text at all
+            spells_all += 1
+            bad = ["unparsed text"] if "unparsed_tooltip" in s["flags"] else []
+            if bad:
                 unparsed.append(f"{cid} {s['key']}")
             for line in s["lines"]:
-                lines_all += 1
-                bad = _line_unsupported(s, line)
-                unsupported.update(bad)
-                lines_ok += not bad
-    coverage = f"damage lines fully readable: {lines_ok}/{lines_all} ({100 * lines_ok / max(lines_all, 1):.1f}%)"
+                bad += _line_unsupported(s, line)
+                bad += ["percentage of another base" for t in line["terms"] if t["kind"] == "unsupported"]
+            unsupported.update(bad)
+            spells_ok += not bad
+    coverage = f"spells with damage fully readable: {spells_ok}/{spells_all} ({100 * spells_ok / max(spells_all, 1):.1f}%)"
     items, groups, item_report = build_items(it_en, it_fr, items_bin)
     runes = build_runes(rr_en, rr_fr)
     from rules import RULES
@@ -532,8 +571,9 @@ def main(argv):
     possible_runes = sorted(k for k, r in runes["byId"].items()
                             if POSSIBLE_RUNE_STAT.search(TAG.sub(" ", r["desc"]["en"])))
     outside_stats = lambda html: TAG.sub(" ", re.sub(r"<stats>.*?</stats>", "", html, flags=re.S))
-    possible_item_damage = sorted(i for i, it in items.items() if re.search(r"damage", outside_stats(it["desc"]["en"]), re.I))
-    possible_rune_damage = sorted(k for k, r in runes["byId"].items() if re.search(r"damage", TAG.sub(" ", r["desc"]["en"]), re.I))
+    damage_words = re.compile(r"damag|critical", re.I)  # "damage", "Damaging", "Critically Strikes"
+    possible_item_damage = sorted(i for i, it in items.items() if damage_words.search(outside_stats(it["desc"]["en"])))
+    possible_rune_damage = sorted(k for k, r in runes["byId"].items() if damage_words.search(TAG.sub(" ", r["desc"]["en"])))
     data = {"patch": patch, "champions": champions, "items": items, "groups": groups, "runes": runes,
             "rules": RULES, "review": {"possibleStatPassives": possible_passives, "possibleRuneStats": possible_runes,
                                        "possibleItemDamage": possible_item_damage,

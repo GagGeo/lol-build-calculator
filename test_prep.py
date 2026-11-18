@@ -289,7 +289,7 @@ class ParseDamageLines(unittest.TestCase):
         t = "dealing <trueDamage>{{ basedamage }} plus {{ executedamage*100 }}% missing Health true damage</trueDamage>."
         lines, _ = parse_damage_lines(t, set(), {"BaseDamage", "ExecuteDamage"})
         self.assertEqual(lines[0]["terms"], [{"value": "BaseDamage", "kind": "flat"},
-                                             {"value": "ExecuteDamage", "kind": "targetMissing"}])
+                                             {"value": "ExecuteDamage", "kind": "targetMissing", "mult": 100, "percent": True}])
         self.assertEqual(lines[0]["type"], "true")
 
     def test_vayne_w_max_health(self):
@@ -302,7 +302,7 @@ class ParseDamageLines(unittest.TestCase):
 
     def test_current_health(self):
         lines, _ = parse_damage_lines("<physicalDamage>{{ pct }}% current Health physical damage</physicalDamage>", set(), {"Pct"})
-        self.assertEqual(lines[0]["terms"], [{"value": "Pct", "kind": "targetCurrent"}])
+        self.assertEqual(lines[0]["terms"], [{"value": "Pct", "kind": "targetCurrent", "percent": True}])
 
     def test_unresolved_placeholder_flags(self):
         lines, flags = parse_damage_lines("<physicalDamage>{{ mystery }} physical damage</physicalDamage>", set(), set())
@@ -323,6 +323,63 @@ class ParseDamageLines(unittest.TestCase):
                                       {"TotalDamage"}, set())
         self.assertNotIn("perHit", lines[0])
 
+    # Final-review fixes.
+    def test_cross_spell_placeholder_is_flagged(self):
+        lines, flags = parse_damage_lines("<physicalDamage>{{ spell.khazixq:basedamage }} physical damage</physicalDamage>", set(), set())
+        self.assertEqual((lines, flags), ([], ["unparsed_tooltip"]))
+
+    def test_percent_sign_means_percent_value(self):
+        lines, _ = parse_damage_lines("<magicDamage>{{ healthdamage }}% max Health magic damage</magicDamage>", set(), {"HealthDamage"})
+        self.assertEqual(lines[0]["terms"], [{"value": "HealthDamage", "kind": "targetMax", "percent": True}])
+
+    def test_times_100_means_fraction_and_multiplier_kept(self):
+        lines, _ = parse_damage_lines("<trueDamage>{{ executedamage*100 }}% missing Health true damage</trueDamage>", set(), {"ExecuteDamage"})
+        self.assertEqual(lines[0]["terms"], [{"value": "ExecuteDamage", "kind": "targetMissing", "mult": 100, "percent": True}])
+        lines, _ = parse_damage_lines("<physicalDamage>{{ basedamage*0.5 }} physical damage</physicalDamage>", set(), {"BaseDamage"})
+        self.assertEqual(lines[0]["terms"], [{"value": "BaseDamage", "kind": "flat", "mult": 0.5}])
+
+    def test_hyphenated_missing_health(self):
+        lines, _ = parse_damage_lines("<trueDamage>{{ x }}% missing-Health true damage</trueDamage>", set(), {"X"})
+        self.assertEqual(lines[0]["terms"][0]["kind"], "targetMissing")
+
+    def test_percent_of_other_base_is_unsupported(self):
+        for text in ("{{ x }}% of the grabbed enemy's bonus Health physical damage", "{{ x }}% damage",
+                     "{{ x }}% per 1% missing Health magic damage"):
+            lines, _ = parse_damage_lines(f"<magicDamage>{text}</magicDamage>", set(), {"X"})
+            self.assertEqual(lines[0]["terms"][0]["kind"], "unsupported", text)
+
+    def test_non_damage_segments_are_skipped(self):
+        for text in ("<physicalDamage>{{ x }} bonus Attack Damage</physicalDamage>", "<magicDamage>{{ x }} Mana</magicDamage>",
+                     "<magicDamage>{{ x }}% increased damage</magicDamage>"):
+            self.assertEqual(parse_damage_lines(text, set(), {"X"}), ([], []), text)
+
+    def test_minion_and_monster_segments_are_skipped(self):
+        t = ("bites a monster or minion, dealing <trueDamage>{{ m }} true damage</trueDamage>, "
+             "or a champion, dealing <magicDamage>{{ c }} magic damage</magicDamage>.")
+        lines, _ = parse_damage_lines(t, set(), {"M", "C"})
+        self.assertEqual([l["terms"][0]["value"] for l in lines], ["C"])
+        lines, _ = parse_damage_lines("deals <physicalDamage>{{ m }} physical damage</physicalDamage> to minions", set(), {"M"})
+        self.assertEqual(lines, [])
+
+    def test_minion_only_said_later_in_the_sentence(self):
+        t = ("dealing <trueDamage>{{ m }} true damage</trueDamage> and restoring Health when used against a minion or "
+             "jungle monster. Against a champion, it deals <magicDamage>{{ c }} magic damage</magicDamage>.")
+        lines, _ = parse_damage_lines(t, set(), {"M", "C"})
+        self.assertEqual([l["terms"][0]["value"] for l in lines], ["C"])
+
+    def test_minion_only_with_markup_in_between(self):
+        t = ("dealing <trueDamage>{{ monsterminiondamage }} true damage</trueDamage> and restoring <healing>{{ monsterhealing }} "
+             "Health</healing> when used against a minion or jungle monster. Against a champion, it instead deals "
+             "<magicDamage>{{ totalchampiondamage }} magic damage</magicDamage>.")
+        lines, _ = parse_damage_lines(t, set(), {"MonsterMinionDamage", "TotalChampionDamage"})
+        self.assertEqual([l["terms"][0]["value"] for l in lines], ["TotalChampionDamage"])
+
+    def test_damage_that_varies_with_missing_health_is_marked(self):
+        t = "deals between <physicalDamage>{{ maxdamage }} physical damage</physicalDamage>, based on their missing Health."
+        self.assertTrue(parse_damage_lines(t, set(), {"MaxDamage"})[0][0]["varies"])
+        t = "deals <physicalDamage>{{ d }} physical damage</physicalDamage>, increased by up to 60% based on his missing Health."
+        self.assertTrue(parse_damage_lines(t, set(), {"D"})[0][0]["varies"])
+
     def test_duplicate_lines_kept_once(self):
         t = "<magicDamage>{{ d }} magic damage</magicDamage> then <magicDamage>{{ d }} magic damage</magicDamage>"
         self.assertEqual(len(parse_damage_lines(t, {"D"}, set())[0]), 1)
@@ -335,7 +392,7 @@ def _dd_spell(sid, tooltip, maxrank=5):
 DD_ANNIE = {"id": "Annie", "passive": {"name": "Pyromania"}, "spells": [
     _dd_spell("AnnieQ", "<magicDamage>{{ totaldamage }} magic damage</magicDamage>"),
     _dd_spell("AnnieW", "<magicDamage>{{ basedamage }} magic damage</magicDamage>"),
-    _dd_spell("AnnieE", "Shield"), _dd_spell("AnnieR", "<magicDamage>{{ x }}</magicDamage>", 3)]}
+    _dd_spell("AnnieE", "Shield"), _dd_spell("AnnieR", "<magicDamage>{{ x }} magic damage</magicDamage>", 3)]}
 DD_ANNIE_FR = {**DD_ANNIE, "passive": {"name": "Pyromanie"},
                "spells": [{**s, "name": s["name"] + " fr"} for s in DD_ANNIE["spells"]]}
 ANNIE_BIN = {

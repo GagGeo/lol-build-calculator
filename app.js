@@ -305,12 +305,19 @@ function renderDamage(attackerPanel, targetPanel) {
     for (let li = 0; li < count; li++) {
       const r = Engine.spellDamage(DATA, side, target, spell.key, li);
       let text;
+      const spellName = `${spell.key} ${nm(spell.name)}`;
       if (!r.learned) text = t('notLearned');
       else if (r.noDamage) text = t('noDamage');
-      else if (li && Math.round(r.damage) === 0) continue; // extra lines that come out at 0 (e.g. crit-only lines) are noise
-      else text = `${fmt(r.damage, 0)} ${t('type_' + r.type)}${r.perHit ? ' ' + t('perHit') : ''} (${pctOf(r.damage)})${r.unsupported.length ? ' *' : ''}`;
-      if (r.perHit && !li) notes.push(t('perHitNote', {spell: `${spell.key} ${nm(spell.name)}`}));
-      if (r.unsupported.length) notes.push(t('excludedNote', {spell: `${spell.key} ${nm(spell.name)}`}));
+      else if (r.unsupported.length) {
+        // Never show a number the engine couldn't fully compute.
+        text = t('checkInGame');
+        notes.push(li ? t('partNote', {spell: spellName}) : t('excludedNote', {spell: spellName}));
+      } else if (li && Math.round(r.damage) === 0) continue; // extra lines that come out at 0 are noise
+      else {
+        text = `${fmt(r.damage, 0)} ${t('type_' + r.type)}${r.perHit ? ' ' + t('perHit') : ''} (${pctOf(r.damage)})`;
+        if (r.perHit && !li) notes.push(t('perHitNote', {spell: spellName}));
+      }
+      if (!li && count > 1 && r.learned && !r.noDamage) text += ` — ${t('comboLine')}`;
       rows.push(el('tr', {}, el('th', {scope: 'row', text: li ? '' : `${spell.key === 'P' ? t('passive') : spell.key}: ${nm(spell.name)}`}),
         el('td', {text: spell.key === 'P' || !r.learned || li ? '' : `${t('rank')} ${r.rank}`}), el('td', {text})));
     }

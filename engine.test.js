@@ -187,9 +187,10 @@ test('auto attack crit damage bonus and armor', () => {
 });
 
 const RSPELL = spell('R', {values: {BaseDamage: [0, 150, 300, 450], ExecuteDamage: [0, 0.25, 0.3, 0.35]},
-  lines: [{type: 'true', terms: [{value: 'BaseDamage', kind: 'flat'}, {value: 'ExecuteDamage', kind: 'targetMissing'}]}]});
+  lines: [{type: 'true', terms: [{value: 'BaseDamage', kind: 'flat'},
+                                 {value: 'ExecuteDamage', kind: 'targetMissing', mult: 100, percent: true}]}]});
 const ESPELL = spell('E', {values: {Pct: [0, 4, 5, 6, 7, 8]},
-  lines: [{type: 'true', terms: [{value: 'Pct', kind: 'targetMax'}]}]});
+  lines: [{type: 'true', terms: [{value: 'Pct', kind: 'targetMax', percent: true}]}]});
 const WSPELL = spell('W', {calcs: {Bad: {parts: [{t: 'x', what: 'CooldownMultiplierCalculationPart'}], pct: false, mult: null, flags: []}},
   lines: [{type: 'magic', terms: [{calc: 'Bad', kind: 'flat'}]}]});
 const D2 = {...D, rules: RULES2, champions: {...D.champions,
@@ -204,7 +205,7 @@ test('spell not learned', () => {
 test('annie-like q after magic resist', () => near(Engine.spellDamage(D2, side(), tgt({mr: 100}), 'Q').damage, 40));
 test('missing health term uses current hp', () =>
   near(Engine.spellDamage(D2, side({level: 6}), tgt({maxHp: 1000, currentHp: 400}), 'R').raw, 150 + 0.25 * 600));
-test('max health term in percent is divided by 100', () =>
+test('percent-shown max health term is divided by 100', () =>
   near(Engine.spellDamage(D2, side({level: 3}), tgt({maxHp: 2000}), 'E').raw, 0.04 * 2000));
 test('unsupported spell reports what', () =>
   assert.deepEqual(Engine.spellDamage(D2, side({level: 2}), tgt(), 'W').unsupported, ['CooldownMultiplierCalculationPart']));
@@ -318,4 +319,39 @@ test('spells see shred from earlier hits', () => {
     {champ: 'Testo', stats: {base: {}, bonus: {}, total: {hp: 1000, armor: 0, mr: 100}}, currentHpPct: 100}, [{spell: 'Q'}, {spell: 'Q'}]);
   near(r.rows[0].damage, 40);
   near(r.rows[1].damage, 80 * 100 / 192.5);
+});
+
+// Stage 2 final-review fixes: how target-health numbers are scaled, and flags.
+const scaleSpell = (terms, extra = {}) => spell('Q', {values: {V: [0, 1, 2], H: [0, 0.5]},
+  calcs: {Pct: {parts: [{t: 'n', n: 0.04}], pct: true, mult: null, flags: []}}, lines: [{type: 'true', terms}], ...extra});
+const D5 = (q) => ({...D3, champions: {...D3.champions, Annie: {...D3.champions.Annie,
+  spells: D3.champions.Annie.spells.map((s) => (s.key === 'Q' ? q : s))}}});
+const qDamage = (q, currentHp = 1000) => Engine.spellDamage(D5(q), side(), {stats: T({hp: 1000}), currentHp}, 'Q');
+test('a 1 shown as "1%" is one percent', () => near(qDamage(scaleSpell([{value: 'V', kind: 'targetMax', percent: true}])).raw, 10));
+test('a percentage formula is a fraction', () => near(qDamage(scaleSpell([{calc: 'Pct', kind: 'targetMax'}])).raw, 40));
+test('the display multiplier applies to flat terms', () => near(qDamage(scaleSpell([{value: 'H', kind: 'flat', mult: 0.5}])).raw, 0.25));
+test('a target-health term without % or percentage formula is unsupported', () =>
+  assert.ok(qDamage(scaleSpell([{value: 'V', kind: 'targetMax'}])).unsupported.length > 0));
+test('a percentage of another base is unsupported', () =>
+  assert.ok(qDamage(scaleSpell([{value: 'V', kind: 'unsupported', percent: true}])).unsupported.length > 0));
+test('a line whose damage varies is unsupported', () =>
+  assert.ok(qDamage(scaleSpell([{value: 'V', kind: 'flat'}], {lines: [{type: 'true', varies: true, terms: [{value: 'V', kind: 'flat'}]}]}))
+    .unsupported.length > 0));
+test('a spell with no description or no game data is unsupported', () => {
+  assert.ok(qDamage(scaleSpell([{value: 'V', kind: 'flat'}], {flags: ['no_tooltip']})).unsupported.length > 0);
+  assert.ok(qDamage(scaleSpell([{value: 'V', kind: 'flat'}], {flags: ['no_cdragon_spell']})).unsupported.length > 0);
+});
+test('empty current health means full health', () => assert.equal(Engine.clampPct(''), 100));
+test('afterAutos amp counts only basic attacks', () => {
+  const PTA = {...D3, items: {...D3.items, pta: plainItem('pta')}, rules: {...D3.rules, itemDamage: {...D3.rules.itemDamage,
+    pta: [{kind: 'amp', pct: 0.08, condition: 'afterAutos:3', applies: 'all'}]}}};
+  const sel = {champ: 'Annie', level: 1, items: ['pta'], runes: null, stacked: false, stacks: 0};
+  const run = (steps) => Engine.runCombo(PTA, {...sel, priority: ['Q', 'W', 'E'], stats: Engine.championStats(PTA, sel)},
+    {champ: 'Testo', stats: {base: {}, bonus: {}, total: {hp: 5000, armor: 0, mr: 0}}, currentHpPct: 100}, steps);
+  near(run([{spell: 'Q'}, {spell: 'Q'}, {spell: 'Q'}, {spell: 'Q'}]).rows[3].damage, 80);
+  near(run([{autos: 3}, {spell: 'Q'}]).rows[1].damage, 80 * 1.08);
+});
+test('a spell with no readable line but an unparsed description is unsupported, not "no damage"', () => {
+  const r = qDamage(scaleSpell([], {lines: [], flags: ['unparsed_tooltip']}));
+  assert.ok(r.unsupported.length > 0); assert.notEqual(r.noDamage, true);
 });

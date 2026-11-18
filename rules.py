@@ -84,7 +84,7 @@ RULES = {
         "8229": [{"kind": "afterSpell", "type": "adaptive", "base": [15, 100],              # Arcane Comet
                   "ratios": {"bonusAd": 0.1, "ap": 0.05}}],
         "8005": [{"kind": "onHit", "every": 3, "limit": 1, "type": "adaptive", "base": [40, 160]},  # Press the Attack
-                 {"kind": "amp", "pct": 0.08, "condition": "afterHits:3", "applies": "all"}],
+                 {"kind": "amp", "pct": 0.08, "condition": "afterAutos:3", "applies": "all"}],
         "8014": [{"kind": "amp", "pct": 0.08, "condition": "targetBelow:40", "applies": "all"}],   # Coup de Grace
         "8017": [{"kind": "amp", "pct": 0.08, "condition": "targetAbove:60", "applies": "all"}],   # Cut Down
         "8369": [{"kind": "amp", "pct": 0.07, "condition": "always", "applies": "all"}],           # First Strike
@@ -94,6 +94,8 @@ RULES = {
         # Deathfire Touch: 4 s single-target burn, last second +75% → 4.75 x per-second values.
         "8992": [{"kind": "afterSpell", "type": "magic", "base": [14.25, 57],
                   "ratios": {"ap": 0.11875, "bonusAd": 0.3325}}],
+        "8214": [{"kind": "proc", "hits": 1, "type": "adaptive", "base": [10, 50],              # Summon Aery
+                  "ratios": {"ap": 0.05, "bonusAd": 0.1}}],
         "9923": [{"kind": "onHit", "limit": 3, "type": "true", "base": [2, 20],                # Hail of Blades
                   "ratios": {"bonusAd": 0.12, "ap": 0.1}}],
     },
@@ -140,12 +142,12 @@ RULES = {
         "3053", "3070", "3074", "3075", "3076", "3077", "3082", "3083", "3085", "3107", "3109", "3123", "3137",
         "3143", "3146", "3152", "3155", "3156", "3165", "3171", "3173", "3174", "3179", "3504", "3803", "3869",
         "3870", "3916", "4401", "4628", "4629", "6333", "6609", "6620", "6631", "6657", "6673", "6696", "6697",
-        "6698"],
+        "6698", "3032", "3116", "6694", "6695"],
     # Real single-target damage with no published value or a trigger the effect kinds can't express
     # (Energized attacks, damage thresholds, after-ultimate effects, distance, executes, auras).
     "itemDamageUnknown": [
         "2502", "2510", "2512", "2520", "2523", "3050", "3068", "3087", "3091", "3094", "3095", "3118", "3144",
-        "3145", "3161", "3181", "3302", "3877", "4646", "6660", "6664", "6672", "6676", "6699"],
+        "3145", "3161", "3181", "3302", "3877", "4646", "6610", "6660", "6664", "6672", "6676", "6699"],
     # Permanent stat per stack. Value forms: number per stack; {"per": n, "value": v} = v every n stacks;
     # {"byRRank": [r1, r2, r3]} = per stack, by ultimate rank (R at levels 6/11/16).
     # Values from CommunityDragon champion files, 16.23.
