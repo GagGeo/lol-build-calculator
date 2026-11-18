@@ -265,7 +265,8 @@ def parse_damage_lines(tooltip, calc_names, value_names):
     calcs = {n.lower(): n for n in calc_names}
     values = {n.lower(): n for n in value_names}
     lines, flags = [], []
-    for tag, segment in DAMAGE_TAG.findall(tooltip):
+    for match in DAMAGE_TAG.finditer(tooltip):
+        tag, segment = match.group(1), match.group(2)
         found = list(PLACEHOLDER.finditer(segment))
         terms, unresolved = [], False
         for i, m in enumerate(found):
@@ -280,6 +281,10 @@ def parse_damage_lines(tooltip, calc_names, value_names):
         if unresolved and "unparsed_tooltip" not in flags:
             flags.append("unparsed_tooltip")
         line = {"type": DAMAGE_TYPES[tag], "terms": terms}
+        # "... physical damage {{ n }} times", "... each bounce", "per second": the number is for one hit.
+        following = TAG.sub(" ", tooltip[match.end():match.end() + 80])
+        if re.search(r"\b(times|each|per|every)\b", TAG.sub(" ", segment) + " " + following, re.I):
+            line["perHit"] = True
         if terms and line not in lines:
             lines.append(line)
     return lines, flags

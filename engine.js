@@ -342,7 +342,8 @@ const Engine = (() => {
         : term.kind === 'targetMissing' ? frac * (maxHp - current)
           : term.kind === 'targetCurrent' ? frac * current : frac;
     }
-    return {learned: true, rank, raw, damage: mitigate(raw, line.type, side.stats, target.stats), type: line.type, unsupported};
+    return {learned: true, rank, raw, damage: mitigate(raw, line.type, side.stats, target.stats, shred), type: line.type, unsupported,
+            perHit: !!line.perHit};
   }
 
   const DEFAULT_COMBO = [{spell: 'Q'}, {spell: 'W'}, {spell: 'E'}, {autos: 3}, {spell: 'R'}];
@@ -452,6 +453,7 @@ const Engine = (() => {
         else if (r.unsupported.length) { notes.push('excluded'); excluded.push(step.spell); spellbladeReady = true; }
         else if (r.noDamage) { notes.push('no_damage'); spellbladeReady = true; }
         else {
+          if (r.perHit) notes.push('per_hit');
           const f = ampFactor('spell', r.type);
           hp -= r.damage * f;
           damage += r.damage * f;

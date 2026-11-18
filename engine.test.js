@@ -301,3 +301,21 @@ test('amp targetAbove', () => {
   near(combo4({items: ['cutdown']}, [{autos: 1}]).rows[0].damage, 60 * 1.08);
   near(combo4({items: ['cutdown'], currentHpPct: 50}, [{autos: 1}]).rows[0].damage, 60);
 });
+test('per-hit lines are reported by spellDamage and noted in the combo', () => {
+  const PH = {...D3, champions: {...D3.champions, Annie: {...D3.champions.Annie, spells: D3.champions.Annie.spells.map((s) =>
+    s.key === 'Q' ? {...s, lines: [{...s.lines[0], perHit: true}]} : s)}}};
+  const sel = {champ: 'Annie', level: 1, items: [], runes: null, stacked: false, stacks: 0};
+  const sideQ = {...sel, priority: ['Q', 'W', 'E'], stats: Engine.championStats(PH, sel)};
+  const tgtQ = {champ: 'Testo', stats: {base: {}, bonus: {}, total: {hp: 1000, armor: 0, mr: 0}}, currentHpPct: 100};
+  assert.equal(Engine.spellDamage(PH, sideQ, {stats: tgtQ.stats, currentHp: 1000}, 'Q').perHit, true);
+  assert.ok(Engine.runCombo(PH, sideQ, tgtQ, [{spell: 'Q'}]).rows[0].notes.includes('per_hit'));
+});
+test('spells see shred from earlier hits', () => {
+  const BL = {...D3, items: {...D3.items, bl: plainItem('bl')}, rules: {...D3.rules, itemDamage: {...D3.rules.itemDamage,
+    bl: [{kind: 'shred', stat: 'mr', pctPerStack: 0.075, maxStacks: 4, on: 'magic'}]}}};
+  const sel = {champ: 'Annie', level: 1, items: ['bl'], runes: null, stacked: false, stacks: 0};
+  const r = Engine.runCombo(BL, {...sel, priority: ['Q', 'W', 'E'], stats: Engine.championStats(BL, sel)},
+    {champ: 'Testo', stats: {base: {}, bonus: {}, total: {hp: 1000, armor: 0, mr: 100}}, currentHpPct: 100}, [{spell: 'Q'}, {spell: 'Q'}]);
+  near(r.rows[0].damage, 40);
+  near(r.rows[1].damage, 80 * 100 / 192.5);
+});

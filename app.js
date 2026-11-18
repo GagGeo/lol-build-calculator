@@ -1,4 +1,4 @@
-// The page: one reusable champion panel (stage 2 adds a second one for the enemy).
+// The page: two champion panels (you and the enemy) and each side's damage to the other.
 const DATA = window.DATA;
 // Some private windows throw on merely reading window.localStorage.
 const storage = (() => { try { return window.localStorage; } catch { return undefined; } })();
@@ -47,12 +47,19 @@ function shardLabel(id) {
   return key === 'hpPerLevel' ? t('shard_hpPerLevel') : `${t('stat_' + key)} +${fmt(value)}${key === 'as' || key === 'msPct' || key === 'tenacity' ? '%' : ''}`;
 }
 
-function createPanel(container, side) {
+const PRIORITIES = ['QWE', 'QEW', 'WQE', 'WEQ', 'EQW', 'EWQ'];
+const sourceName = (source) => {
+  const [kind, id] = source.split(':');
+  return kind === 'item' ? nm(DATA.items[id].name) : runeName(id);
+};
+
+function createPanel(container, side, onChange) {
   const champs = Object.values(DATA.champions);
   const state = {
-    champ: champs.slice().sort(byName)[0].id, level: 1, stacks: 0, stacked: false,
+    champ: champs.slice().sort(byName)[side === 'you' ? 0 : 1].id, level: 1, stacks: 0, stacked: false,
     items: [null, null, null, null, null, null],
     runes: Engine.normalizeRunePage(DATA, {}),
+    currentHpPct: 100, priority: ['Q', 'W', 'E'], combo: Engine.DEFAULT_COMBO.map((s) => ({...s})),
   };
   let removedNotice = '';
 
@@ -68,6 +75,11 @@ function createPanel(container, side) {
     stacked: el('input', {type: 'checkbox', id: side + '-stacked'}),
     slots: [0, 1, 2, 3, 4, 5].map(() => el('select')),
     cost: el('div', {class: 'cost'}), notices: el('div'), stats: el('table'), note: el('p', {class: 'note'}),
+    hp: el('input', {type: 'number', min: 1, max: 100, step: 1, id: side + '-hp'}),
+    priority: el('select', {id: side + '-priority'}),
+    comboList: el('ol', {class: 'combo-list'}), addStep: el('select', {id: side + '-addstep'}),
+    addButton: el('button', {type: 'button'}), resetButton: el('button', {type: 'button'}),
+    results: el('div', {class: 'results full'}),
     labels: {},
   };
   const label = (key, forId) => (ui.labels[key + forId] = el('label', forId ? {for: forId} : {}));
@@ -77,6 +89,8 @@ function createPanel(container, side) {
     label('champion', side + '-champ'), ui.champ,
     label('level', side + '-level'), el('div', {class: 'row'}, ui.range, ui.number),
     stacksWrap,
+    label('currentHp', side + '-hp'), ui.hp,
+    label('skillOrder', side + '-priority'), ui.priority,
     el('h3', {'data-k': 'runes'}),
     el('div', {class: 'runes-grid'},
       el('div', {}, label('primary', side + '-primary'), ui.primary, label('keystone', side + '-keystone'), ui.keystone,
@@ -89,7 +103,10 @@ function createPanel(container, side) {
     el('h3', {'data-k': 'items'}), el('div', {class: 'inventory'}, ...ui.slots.map((s) => el('div', {class: 'slot'}, s))),
     ui.cost, ui.notices,
     el('h3', {'data-k': 'stats'}), ui.stats, ui.note);
-  container.append(el('section', {class: 'panel', 'aria-labelledby': side + '-title'}, ui.title, left, right));
+  const comboBox = el('div', {class: 'full'}, el('h3', {'data-k': 'combo'}), ui.comboList,
+    el('div', {class: 'row combo-add'}, ui.addStep, ui.addButton, ui.resetButton));
+  container.append(el('section', {class: 'panel', 'aria-labelledby': side + '-title'},
+    ui.title, left, right, comboBox, ui.results));
   ui.title.id = side + '-title';
   ui.slots.forEach((s, i) => s.setAttribute('aria-label', `${t('items')} ${i + 1}`));
 
@@ -117,6 +134,13 @@ function createPanel(container, side) {
   ui.secondary.addEventListener('change', runeChange(() => { state.runes.secondary = num(ui.secondary.value); }));
   ui.secondaryRunes.forEach((s, i) => s.addEventListener('change', runeChange(() => { state.runes.secondaryRunes[i] = num(s.value); })));
   ui.shards.forEach((s, i) => s.addEventListener('change', runeChange(() => { state.runes.shards[i] = num(s.value); })));
+  ui.hp.addEventListener('change', () => { state.currentHpPct = Engine.clampPct(ui.hp.value); render(); });
+  ui.priority.addEventListener('change', () => { state.priority = ui.priority.value.split(''); render(); });
+  ui.addButton.addEventListener('click', () => {
+    state.combo.push(ui.addStep.value === 'A' ? {autos: 1} : {spell: ui.addStep.value});
+    render();
+  });
+  ui.resetButton.addEventListener('click', () => { state.combo = Engine.DEFAULT_COMBO.map((s) => ({...s})); render(); });
   ui.slots.forEach((s, i) => s.addEventListener('change', () => {
     state.items[i] = s.value || null;
     removedNotice = '';
@@ -124,6 +148,42 @@ function createPanel(container, side) {
   }));
 
   // --- render -------------------------------------------------------------
+  const spellLabel = (key) => {
+    const spell = DATA.champions[state.champ].spells.find((s) => s.key === key);
+    return `${key === 'P' ? t('passive') : key}: ${nm(spell.name)}`;
+  };
+
+  function renderCombo() {
+    const move = (i, d) => () => {
+      const j = i + d;
+      if (j < 0 || j >= state.combo.length) return;
+      [state.combo[i], state.combo[j]] = [state.combo[j], state.combo[i]];
+      render();
+    };
+    const button = (text, aria, action) => {
+      const b = el('button', {type: 'button', 'aria-label': aria, title: aria, class: 'icon', text});
+      b.addEventListener('click', action);
+      return b;
+    };
+    ui.comboList.replaceChildren(...state.combo.map((step, i) => {
+      let what;
+      if (step.spell) what = el('span', {text: spellLabel(step.spell)});
+      else {
+        const count = el('input', {type: 'number', min: 1, max: 20, step: 1, value: step.autos,
+          'aria-label': `${t('autos')} (${t('step')} ${i + 1})`});
+        count.addEventListener('change', () => { step.autos = Math.min(20, Math.max(1, Math.round(Number(count.value)) || 1)); render(); });
+        what = el('span', {class: 'row'}, el('span', {text: t('autos')}), count);
+      }
+      return el('li', {}, what, el('span', {class: 'combo-buttons'},
+        button('↑', t('moveUp'), move(i, -1)), button('↓', t('moveDown'), move(i, 1)),
+        button('×', t('remove'), () => { state.combo.splice(i, 1); render(); })));
+    }));
+    fillSelect(ui.addStep, [...['P', 'Q', 'W', 'E', 'R'].map((k) => ({value: k, label: spellLabel(k)})),
+      {value: 'A', label: t('autos')}], ui.addStep.value || 'Q');
+    ui.addButton.textContent = t('addStep');
+    ui.resetButton.textContent = t('resetCombo');
+  }
+
   function itemOptions(slot) {
     const allowed = Engine.allowedItems(DATA, state.champ, state.items, slot).map((id) => DATA.items[id]).sort(byName);
     const opt = (i) => ({value: i.id, label: `${nm(i.name)} (${i.gold.total})`});
@@ -146,6 +206,10 @@ function createPanel(container, side) {
     ui.labels['keystone' + side + '-keystone'].textContent = t('keystone');
     ui.labels['secondary' + side + '-secondary'].textContent = t('secondary');
     ui.labels['shards'].textContent = t('shards');
+    ui.labels['currentHp' + side + '-hp'].textContent = t('currentHp');
+    ui.labels['skillOrder' + side + '-priority'].textContent = t('skillOrder');
+    ui.hp.value = state.currentHpPct;
+    fillSelect(ui.priority, PRIORITIES.map((p) => ({value: p, label: p.split('').join(' > ')})), state.priority.join(''));
 
     fillSelect(ui.champ, champs.slice().sort(byName).map((c) => ({value: c.id, label: nm(c.name)})), state.champ);
     ui.range.value = ui.number.value = state.level;
@@ -212,10 +276,75 @@ function createPanel(container, side) {
     });
     ui.stats.replaceChildren(el('thead', {}, head), el('tbody', {}, ...rows));
     ui.note.textContent = t('asNote');
+    renderCombo();
+    if (onChange) onChange();
   }
 
   render();
-  return {getSelection: () => ({...state, items: state.items.slice()}), setLang: render};
+  return {getSelection: () => ({...state, items: state.items.slice(), combo: state.combo.map((s) => ({...s}))}),
+          setLang: render, results: ui.results};
+}
+
+// One side's damage to the other: basic attack, each spell, and the combo.
+function renderDamage(attackerPanel, targetPanel) {
+  const a = attackerPanel.getSelection(), b = targetPanel.getSelection();
+  const aStats = Engine.championStats(DATA, a), bStats = Engine.championStats(DATA, b);
+  const champA = DATA.champions[a.champ], champB = DATA.champions[b.champ];
+  const side = {...a, stats: aStats};
+  const maxHp = bStats.total.hp;
+  const target = {stats: bStats, currentHp: maxHp * Engine.clampPct(b.currentHpPct) / 100};
+  const notes = [];
+  if (champA.flags.includes('custom_skill_ranks')) notes.push(t('customRanks', {champ: nm(champA.name)}));
+  const pctOf = (dmg) => t('ofMaxHp', {pct: fmt(100 * dmg / maxHp)});
+
+  const aa = Engine.autoAttack(aStats, bStats, DATA.rules);
+  const rows = [el('tr', {}, el('th', {scope: 'row', text: t('basicAttack')}), el('td'),
+    el('td', {text: `${t('nonCrit')} ${fmt(aa.nonCrit, 0)}, ${t('crit')} ${fmt(aa.crit, 0)}, ${t('average')} ${fmt(aa.average, 0)} ${t('type_physical')}`}))];
+  for (const spell of champA.spells) {
+    const count = Math.max(1, spell.lines.length);
+    for (let li = 0; li < count; li++) {
+      const r = Engine.spellDamage(DATA, side, target, spell.key, li);
+      let text;
+      if (!r.learned) text = t('notLearned');
+      else if (r.noDamage) text = t('noDamage');
+      else if (li && Math.round(r.damage) === 0) continue; // extra lines that come out at 0 (e.g. crit-only lines) are noise
+      else text = `${fmt(r.damage, 0)} ${t('type_' + r.type)}${r.perHit ? ' ' + t('perHit') : ''} (${pctOf(r.damage)})${r.unsupported.length ? ' *' : ''}`;
+      if (r.perHit && !li) notes.push(t('perHitNote', {spell: `${spell.key} ${nm(spell.name)}`}));
+      if (r.unsupported.length) notes.push(t('excludedNote', {spell: `${spell.key} ${nm(spell.name)}`}));
+      rows.push(el('tr', {}, el('th', {scope: 'row', text: li ? '' : `${spell.key === 'P' ? t('passive') : spell.key}: ${nm(spell.name)}`}),
+        el('td', {text: spell.key === 'P' || !r.learned || li ? '' : `${t('rank')} ${r.rank}`}), el('td', {text})));
+    }
+  }
+
+  const combo = Engine.runCombo(DATA, side, {champ: b.champ, stats: bStats, currentHpPct: b.currentHpPct}, a.combo);
+  const noteText = (n) => n === 'kills' ? t('kills') : n === 'not_learned' ? t('notLearned') : n === 'no_damage' ? t('noDamage')
+    : n === 'excluded' ? '*' : n === 'per_hit' ? t('perHit') : sourceName(n.slice(n.indexOf(':') + 1));
+  const comboRows = combo.rows.map((r) => el('tr', {},
+    el('td', {text: String(r.step)}),
+    el('td', {text: r.label.startsWith('A×') ? `${t('autos')} ×${r.label.slice(2)}` : r.label}),
+    el('td', {text: fmt(r.damage, 0)}), el('td', {text: fmt(r.hpAfter, 0)}),
+    el('td', {text: r.notes.map(noteText).join(', ')})));
+  for (const f of combo.flags) {
+    const [, kind, id] = f.split(':');
+    notes.push(t('unknownDamage', {name: sourceName(`${kind}:${id}`)}));
+  }
+  const summary = combo.killsAt ? t('killsAt', {n: combo.killsAt})
+    : t('leaves', {hp: fmt(combo.hpLeft, 0), pct: fmt(100 * combo.hpLeft / maxHp)});
+  const head = (...keys) => el('thead', {}, el('tr', {}, ...keys.map((k) => el('th', {scope: 'col', text: k ? t(k) : ''}))));
+
+  attackerPanel.results.replaceChildren(
+    el('h3', {text: t('damageTo', {champ: nm(champB.name)})}),
+    el('table', {class: 'damage'}, el('tbody', {}, ...rows)),
+    el('h3', {'data-k': 'combo', text: t('combo')}),
+    el('table', {class: 'damage'}, head('step', '', 'damage', 'hpLeft', ''), el('tbody', {}, ...comboRows)),
+    el('p', {class: 'summary', text: summary}),
+    ...[...new Set(notes)].map((n) => el('p', {class: 'notice', text: n})));
+}
+
+function renderMatchup() {
+  if (panels.length < 2) return;
+  renderDamage(panels[0], panels[1]);
+  renderDamage(panels[1], panels[0]);
 }
 
 function renderPage() {
@@ -231,5 +360,7 @@ document.getElementById('lang').addEventListener('click', () => {
   I18N.saveLang(storage, lang);
   renderPage();
 });
-panels.push(createPanel(document.getElementById('panels'), 'you'));
+const container = document.getElementById('panels');
+panels.push(createPanel(container, 'you', renderMatchup));
+panels.push(createPanel(container, 'enemy', renderMatchup));
 renderPage();

@@ -37,10 +37,23 @@
   :focus-visible { outline: 2px solid var(--teal); outline-offset: 2px; }
   select { width: 100%; min-width: 0; }
 
+  #panels { display: grid; gap: 16px; }
+  @media (min-width: 1100px) { #panels { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); } }
   .panel {
     background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 16px;
-    display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.1fr); gap: 20px 28px;
+    display: grid; grid-template-columns: minmax(0, 1fr); gap: 20px 28px; align-content: start;
   }
+  .full { grid-column: 1 / -1; }
+  .combo-list { margin: 0; padding-left: 1.6em; }
+  .combo-list li { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 3px 0;
+    border-bottom: 1px solid var(--line); }
+  .combo-list input[type=number] { width: 4em; }
+  .combo-buttons { display: flex; gap: 4px; }
+  button.icon { padding: 2px 9px; min-width: 32px; }
+  .combo-add { margin-top: 8px; flex-wrap: wrap; }
+  .combo-add select { flex: 1; min-width: 10em; }
+  table.damage td:last-child { text-align: left; }
+  .summary { font-size: 19px; font-weight: 600; color: var(--gold); margin: 10px 0 0; }
   .panel h2 { grid-column: 1 / -1; margin: 0; font-size: 22px; font-weight: 600; }
   h3 { font-size: 17px; font-weight: 600; margin: 18px 0 8px; color: var(--muted); }
   h3:first-child { margin-top: 0; }

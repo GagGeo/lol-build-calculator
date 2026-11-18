@@ -312,6 +312,17 @@ class ParseDamageLines(unittest.TestCase):
     def test_no_damage_tags_no_flag(self):
         self.assertEqual(parse_damage_lines("Grants <speed>{{ ms }}% Move Speed</speed>.", set(), {"MS"}), ([], []))
 
+    def test_multi_hit_lines_marked_per_hit(self):
+        lines, _ = parse_damage_lines("deals <physicalDamage>{{ totaldamage }} physical damage</physicalDamage> {{ f1 }} times over the duration",
+                                      {"TotalDamage"}, set())
+        self.assertTrue(lines[0]["perHit"])
+        lines, _ = parse_damage_lines("deals <magicDamage>{{ totaldamage }} magic damage</magicDamage> to enemies each bounce.",
+                                      {"TotalDamage"}, set())
+        self.assertTrue(lines[0]["perHit"])
+        lines, _ = parse_damage_lines("deals <magicDamage>{{ totaldamage }} magic damage</magicDamage> to the first enemy hit.",
+                                      {"TotalDamage"}, set())
+        self.assertNotIn("perHit", lines[0])
+
     def test_duplicate_lines_kept_once(self):
         t = "<magicDamage>{{ d }} magic damage</magicDamage> then <magicDamage>{{ d }} magic damage</magicDamage>"
         self.assertEqual(len(parse_damage_lines(t, {"D"}, set())[0]), 1)
