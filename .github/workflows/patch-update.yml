@@ -1,0 +1,120 @@
+# Checks every day for a new League of Legends patch.
+# - Every check passes: the new data is committed to main and the website updates by itself.
+# - A hand-written rule needs a human: a pull request "Patch X needs a quick review" explains what to look at.
+#   Editing rules.py on that pull request (even in the browser) rebuilds and re-checks it automatically.
+name: Patch update
+
+on:
+  schedule:
+    - cron: "23 7 * * *"   # every day at 07:23 UTC
+  workflow_dispatch:
+    inputs:
+      patch:
+        description: "Patch to build, e.g. 16.24.1 (leave empty for the latest)"
+        required: false
+  push:
+    branches: ["patch-*"]   # a human edited the review pull request
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: patch-update-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Which patch?
+        id: patch
+        env:
+          EVENT: ${{ github.event_name }}
+          PATCH_INPUT: ${{ inputs.patch }}
+        run: |
+          current=$(python3 -c "import json;print(json.loads(open('data.js').read()[len('window.DATA = '):].rstrip().rstrip(';'))['patch'])")
+          if [ "$EVENT" = "push" ]; then
+            target="${GITHUB_REF_NAME#patch-}"
+          elif [ -n "$PATCH_INPUT" ]; then
+            target="$PATCH_INPUT"
+          else
+            target=$(curl -fsS https://ddragon.leagueoflegends.com/api/versions.json | python3 -c 'import json,sys;print(json.load(sys.stdin)[0])')
+          fi
+          if ! printf '%s' "$target" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$'; then
+            echo "Not a patch number: $target"; exit 1
+          fi
+          echo "current=$current" >> "$GITHUB_OUTPUT"
+          echo "target=$target" >> "$GITHUB_OUTPUT"
+          if [ "$EVENT" != "push" ] && [ "$target" = "$current" ] && [ -z "$PATCH_INPUT" ]; then
+            echo "run=no" >> "$GITHUB_OUTPUT"; echo "Already on patch $current, nothing to do."
+          else
+            echo "run=yes" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Build and check
+        id: build
+        if: steps.patch.outputs.run == 'yes'
+        shell: bash
+        run: |
+          set +e
+          ./update.sh "${{ steps.patch.outputs.target }}" 2>&1 | tee update-log.txt
+          if [ "${PIPESTATUS[0]}" -eq 0 ]; then echo "ok=yes" >> "$GITHUB_OUTPUT"; else echo "ok=no" >> "$GITHUB_OUTPUT"; fi
+
+      - name: Set up git
+        if: steps.patch.outputs.run == 'yes'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+      - name: Publish the new patch (all checks passed)
+        if: steps.patch.outputs.run == 'yes' && steps.build.outputs.ok == 'yes' && github.event_name != 'push'
+        run: |
+          git add data.js data
+          git diff --cached --quiet && { echo "No data change."; exit 0; }
+          git commit -m "data: patch ${{ steps.patch.outputs.target }}"
+          git push origin HEAD:main
+
+      - name: Ask for a quick review (a hand rule needs a human)
+        if: steps.patch.outputs.run == 'yes' && steps.build.outputs.ok == 'no' && github.event_name != 'push'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PATCH: ${{ steps.patch.outputs.target }}
+        run: |
+          branch="patch-$PATCH"
+          git switch -c "$branch"
+          git add data.js data
+          git commit -m "data: patch $PATCH (needs review)" || true
+          git push --force origin "$branch"
+          {
+            echo "Patch **$PATCH** is out, but the automatic checks need a person before the website updates."
+            echo "The website keeps showing the previous patch until this is merged."
+            echo
+            echo "### What to look at"
+            echo '```'
+            grep -E "^(REVIEW|Then set|AssertionError|Traceback)" update-log.txt || tail -30 update-log.txt
+            echo '```'
+            echo
+            echo "### How to fix it (no installation needed)"
+            echo "1. Open the **Files changed** tab, or go to \`rules.py\` on the \`$branch\` branch and click the pencil icon."
+            echo "2. Make the change each REVIEW line asks for (the full report is in \`data/$PATCH-report.txt\`)."
+            echo "3. Commit to this branch. The robot rebuilds the data and re-runs every check."
+            echo "4. When the check below turns green, click **Merge pull request**. The website updates a minute later."
+          } > pr-body.md
+          gh pr create --base main --head "$branch" --title "Patch $PATCH needs a quick review" --body-file pr-body.md \
+            || gh pr comment "$branch" --body-file pr-body.md
+
+      - name: Save the rebuilt data on the review branch (after a human edit)
+        if: steps.patch.outputs.run == 'yes' && github.event_name == 'push'
+        run: |
+          git add data.js data
+          git diff --cached --quiet || { git commit -m "data: rebuild patch ${{ steps.patch.outputs.target }}"; git push origin "HEAD:$GITHUB_REF_NAME"; }
+          [ "${{ steps.build.outputs.ok }}" = "yes" ] || { echo "Some checks still need attention, see the log above."; exit 1; }
