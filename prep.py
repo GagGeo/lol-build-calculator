@@ -2,6 +2,7 @@
 
 Usage: python3 prep.py [patch]
 """
+import collections
 import concurrent.futures
 import json
 import pathlib
@@ -242,6 +243,154 @@ def _normalize_calc(calc):
             "flags": []}
 
 
+# --- Spells and damage lines ----------------------------------------------------------------------
+DAMAGE_TAG = re.compile(r"<(physicalDamage|magicDamage|trueDamage)>(.*?)</\1>", re.S)
+PLACEHOLDER = re.compile(r"\{\{\s*([A-Za-z_]\w*)\s*(?:\*\s*-?[\d.]+)?\s*\}\}|@([A-Za-z_]\w*)(?:\*-?[\d.]+)?@")
+DAMAGE_TYPES = {"physicalDamage": "physical", "magicDamage": "magic", "trueDamage": "true"}
+
+
+def _term_kind(text):
+    text = TAG.sub(" ", text)
+    if re.search(r"missing Health", text, re.I):
+        return "targetMissing"
+    if re.search(r"current Health", text, re.I):
+        return "targetCurrent"
+    if re.search(r"max(imum)? Health", text, re.I):
+        return "targetMax"
+    return "flat"
+
+
+def parse_damage_lines(tooltip, calc_names, value_names):
+    """Damage lines from a tooltip: each <xDamage> segment becomes {type, terms}. Returns (lines, flags)."""
+    calcs = {n.lower(): n for n in calc_names}
+    values = {n.lower(): n for n in value_names}
+    lines, flags = [], []
+    for tag, segment in DAMAGE_TAG.findall(tooltip):
+        found = list(PLACEHOLDER.finditer(segment))
+        terms, unresolved = [], False
+        for i, m in enumerate(found):
+            name = (m.group(1) or m.group(2)).lower()
+            after = segment[m.end():found[i + 1].start() if i + 1 < len(found) else len(segment)]
+            if name in calcs:
+                terms.append({"calc": calcs[name], "kind": _term_kind(after)})
+            elif name in values:
+                terms.append({"value": values[name], "kind": _term_kind(after)})
+            else:
+                unresolved = True
+        if unresolved and "unparsed_tooltip" not in flags:
+            flags.append("unparsed_tooltip")
+        line = {"type": DAMAGE_TYPES[tag], "terms": terms}
+        if terms and line not in lines:
+            lines.append(line)
+    return lines, flags
+
+
+def _data_values(spell):
+    out = {}
+    for dv in spell.get("DataValues") or spell.get("mDataValues") or []:
+        name = dv.get("name") or dv.get("mName")
+        if name:
+            out[name] = [_num(round(v, 4)) for v in (dv.get("values") or dv.get("mValues") or [])]
+    return out
+
+
+def _walk_nodes(node, visit):
+    if isinstance(node, dict):
+        visit(node)
+        for v in node.values():
+            _walk_nodes(v, visit)
+    elif isinstance(node, list):
+        for v in node:
+            _walk_nodes(v, visit)
+
+
+def _resolve_strings(text, strings):
+    """Replace {{ key }} references to other string-table entries, one level deep."""
+    return re.sub(r"\{\{\s*([A-Za-z_]\w*)\s*\}\}",
+                  lambda m: strings.get(m.group(1).lower(), m.group(0)), text)
+
+
+def _one_spell(key, sid, name, maxrank, tooltip, bin_spell):
+    flags = [] if bin_spell is not None else ["no_cdragon_spell"]
+    bin_spell = bin_spell or {}
+    values = _data_values(bin_spell)
+    raw_calcs = bin_spell.get("mSpellCalculations") or {}
+    lines, line_flags = parse_damage_lines(tooltip, set(raw_calcs), set(values))
+    flags += line_flags
+    # Keep only the calcs and values the damage lines reach (following refs).
+    calcs, todo = {}, [t["calc"] for l in lines for t in l["terms"] if "calc" in t]
+    used_values = {t["value"] for l in lines for t in l["terms"] if "value" in t}
+    while todo:
+        cname = todo.pop()
+        if cname in calcs or cname not in raw_calcs:
+            continue
+        calcs[cname] = normalize_calc(raw_calcs[cname])
+
+        def visit(node):
+            if node.get("t") == "ref":
+                todo.append(node["name"])
+            elif node.get("t") == "v":
+                used_values.add(node["name"])
+        _walk_nodes(calcs[cname], visit)
+    return {"key": key, "id": sid, "name": name, "maxrank": maxrank,
+            "values": {k: v for k, v in values.items() if k in used_values},
+            "calcs": calcs, "lines": lines, "flags": flags}
+
+
+def build_spells(dd_en, dd_fr, bin_data, record, strings):
+    """Passive + Q/W/E/R in DATA spell shape, from a Data Dragon champion, its CommunityDragon file and the string table."""
+    lower = {k.lower(): v for k, v in bin_data.items() if isinstance(v, dict)}
+    spells = []
+    passive_path = record.get("mCharacterPassiveSpell", "")
+    passive_id = passive_path.split("/")[-1]
+    tooltip = next((strings[k] for k in (f"spell_{passive_id.lower()}_tooltip",
+                                         f"spell_{passive_id.lower()}_tooltipextended") if k in strings), None)
+    entry = lower.get(passive_path.lower(), {})
+    passive = _one_spell("P", passive_id, {"en": dd_en["passive"]["name"], "fr": dd_fr["passive"]["name"]}, 1,
+                         _resolve_strings(tooltip or "", strings), entry.get("mSpell") if entry else None)
+    if tooltip is None:
+        passive["flags"].append("no_tooltip")
+    if not entry:
+        passive["flags"] = [f for f in passive["flags"] if f != "no_cdragon_spell"] + ["no_cdragon_spell"]
+    spells.append(passive)
+    names = record.get("spellNames", [])
+    for i, key in enumerate("QWER"):
+        en, fr = dd_en["spells"][i], dd_fr["spells"][i]
+        suffix = "/spells/" + names[i].lower() if i < len(names) else None
+        entry = next((v for k, v in lower.items() if suffix and k.endswith(suffix)), None)
+        spells.append(_one_spell(key, en["id"], {"en": en["name"], "fr": fr["name"]}, en["maxrank"],
+                                 en.get("tooltip", ""), entry.get("mSpell") if entry else None))
+    return spells
+
+
+def _line_unsupported(spell, line):
+    """Reasons a damage line can't be fully computed (unsupported parts or missing calcs)."""
+    bad, seen, todo = [], set(), [t["calc"] for t in line["terms"] if "calc" in t]
+    while todo:
+        name = todo.pop()
+        if name in seen:
+            continue
+        seen.add(name)
+        if name not in spell["calcs"]:
+            bad.append("missing calc")
+            continue
+
+        def visit(node):
+            if node.get("t") == "x":
+                bad.append(node["what"])
+            elif node.get("t") == "ref":
+                todo.append(node["name"])
+        _walk_nodes(spell["calcs"][name], visit)
+    return bad
+
+
+def skill_rank_flags(spells):
+    """['custom_skill_ranks'] when the champion doesn't use the usual 5/5/5/3 ranks."""
+    usual = {"Q": 5, "W": 5, "E": 5, "R": 3}
+    odd = any(s["maxrank"] != usual[s["key"]] for s in spells if s["key"] in usual)
+    return ["custom_skill_ranks"] if odd else []
+
+
 POSSIBLE_RUNE_STAT = re.compile(r"(Adaptive Force|Attack Speed|Ability Haste|Health|Armor|Magic Resist|Move Speed)")
 
 
@@ -338,21 +487,38 @@ def main(argv):
     rr_en, rr_fr = dd("en_US", "runesReforged"), dd("fr_FR", "runesReforged")
     items_bin = cd("game/items.cdtb.bin.json")
 
-    def record(cid):
+    def champion_files(cid):
         low = cid.lower()
+        dd_en = dd("en_US", f"champion/{cid}")["data"][cid]
+        dd_fr = dd("fr_FR", f"champion/{cid}")["data"][cid]
         try:
             data = cd(f"game/data/characters/{low}/{low}.bin.json")
         except urllib.error.HTTPError:
-            return cid, None
-        for key, value in data.items():
-            if key.lower() == f"characters/{low}/characterrecords/root":
-                return cid, value
-        return cid, None
+            return cid, (None, {}, dd_en, dd_fr)
+        root = next((v for k, v in data.items() if k.lower() == f"characters/{low}/characterrecords/root"), None)
+        return cid, (root, data, dd_en, dd_fr)
 
+    strings = cd("game/en_us/data/menu/en_us/lol.stringtable.json")
+    strings = strings.get("entries", strings)
     with concurrent.futures.ThreadPoolExecutor(8) as pool:
-        records = dict(pool.map(record, ch_en["data"]))
+        files = dict(pool.map(champion_files, ch_en["data"]))
+    records = {cid: f[0] for cid, f in files.items()}
 
     champions, champ_report = build_champions(ch_en, ch_fr, records)
+    unsupported, unparsed, lines_ok, lines_all = collections.Counter(), [], 0, 0
+    for cid, (rec, data, dd_en, dd_fr) in files.items():
+        spells = build_spells(dd_en, dd_fr, data, rec or {}, strings)
+        champions[cid]["spells"] = spells
+        champions[cid]["flags"] += skill_rank_flags(spells)
+        for s in spells:
+            if "unparsed_tooltip" in s["flags"]:
+                unparsed.append(f"{cid} {s['key']}")
+            for line in s["lines"]:
+                lines_all += 1
+                bad = _line_unsupported(s, line)
+                unsupported.update(bad)
+                lines_ok += not bad
+    coverage = f"damage lines fully readable: {lines_ok}/{lines_all} ({100 * lines_ok / max(lines_all, 1):.1f}%)"
     items, groups, item_report = build_items(it_en, it_fr, items_bin)
     runes = build_runes(rr_en, rr_fr)
     from rules import RULES
@@ -389,6 +555,9 @@ def main(argv):
         ("Possible stat passives (review in rules.py)", [l for l in item_report if l.startswith("possible stat")]),
         ("Possible rune stats (review in rules.py)",
          [f"{k} {runes['byId'][k]['name']['en']}" for k in possible_runes]),
+        ("Spell coverage", [coverage]),
+        ("Spells with unparsed damage text", unparsed),
+        ("Unsupported formula parts (count)", [f"{n} {what}" for what, n in unsupported.most_common()]),
         ("Missing CommunityDragon records", champ_report),
         ("CommunityDragon fallbacks", report),
         (f"Changes since {previous[-1].stem}" if previous else "Changes (no previous patch)", diff),
@@ -397,6 +566,7 @@ def main(argv):
     report_path.write_text("\n\n".join(f"== {title} ==\n" + ("\n".join(lines) or "(none)")
                                        for title, lines in sections) + "\n", encoding="utf-8")
     print(counts)
+    print(coverage)
     print(f"report: {report_path}")
     return 0
 

@@ -113,6 +113,25 @@ possible stat passive: 8010 Bloodletter's Curse
 8463 Font of Life
 9923 Hail of Blades
 
+== Spell coverage ==
+damage lines fully readable: 861/904 (95.2%)
+
+== Spells with unparsed damage text ==
+Kaisa Q
+Mel Q
+Mel W
+Sett W
+Varus Q
+
+== Unsupported formula parts (count) ==
+10 ByCharLevelFormulaCalculationPart
+8 BuffCounterByNamedDataValueCalculationPart
+7 EffectValueCalculationPart
+6 AbilityResourceByCoefficientCalculationPart
+6 BuffCounterByCoefficientCalculationPart
+5 {ee18a47b}
+1 {b22609db}
+
 == Missing CommunityDragon records ==
 (none)
 

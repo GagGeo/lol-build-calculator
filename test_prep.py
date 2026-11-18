@@ -1,6 +1,6 @@
 import unittest
 
-from prep import parse_item_stats, build_items, build_runes, build_champions, diff_patches, normalize_calc
+from prep import parse_item_stats, build_items, build_runes, build_champions, diff_patches, normalize_calc, parse_damage_lines, build_spells, skill_rank_flags
 
 CLEAVER = ("<mainText><stats><attention>45</attention> Attack Damage<br>"
            "<attention>400</attention> Health<br><attention>20</attention> Ability Haste"
@@ -276,6 +276,114 @@ class NormalizeCalc(unittest.TestCase):
     def test_percent_display(self):
         calc = _calc({"mDataValue": "MaxHealthRatio", "__type": "NamedDataValueCalculationPart"}, mDisplayAsPercent=True)
         self.assertTrue(normalize_calc(calc)["pct"])
+
+
+
+class ParseDamageLines(unittest.TestCase):
+    def test_annie_q_line(self):
+        lines, flags = parse_damage_lines("deals <magicDamage>{{ totaldamage }} magic damage</magicDamage>.", {"TotalDamage"}, set())
+        self.assertEqual(lines, [{"type": "magic", "terms": [{"calc": "TotalDamage", "kind": "flat"}]}])
+        self.assertEqual(flags, [])
+
+    def test_garen_r_value_terms_and_missing_health(self):
+        t = "dealing <trueDamage>{{ basedamage }} plus {{ executedamage*100 }}% missing Health true damage</trueDamage>."
+        lines, _ = parse_damage_lines(t, set(), {"BaseDamage", "ExecuteDamage"})
+        self.assertEqual(lines[0]["terms"], [{"value": "BaseDamage", "kind": "flat"},
+                                             {"value": "ExecuteDamage", "kind": "targetMissing"}])
+        self.assertEqual(lines[0]["type"], "true")
+
+    def test_vayne_w_max_health(self):
+        lines, _ = parse_damage_lines("<trueDamage>{{ totaldamage }} max Health true damage</trueDamage>", {"TotalDamage"}, set())
+        self.assertEqual(lines[0]["terms"][0]["kind"], "targetMax")
+
+    def test_string_table_placeholders(self):
+        lines, _ = parse_damage_lines("<magicDamage>@TotalDamage@ magic damage</magicDamage>", {"TotalDamage"}, set())
+        self.assertEqual(lines, [{"type": "magic", "terms": [{"calc": "TotalDamage", "kind": "flat"}]}])
+
+    def test_current_health(self):
+        lines, _ = parse_damage_lines("<physicalDamage>{{ pct }}% current Health physical damage</physicalDamage>", set(), {"Pct"})
+        self.assertEqual(lines[0]["terms"], [{"value": "Pct", "kind": "targetCurrent"}])
+
+    def test_unresolved_placeholder_flags(self):
+        lines, flags = parse_damage_lines("<physicalDamage>{{ mystery }} physical damage</physicalDamage>", set(), set())
+        self.assertEqual(lines, [])
+        self.assertEqual(flags, ["unparsed_tooltip"])
+
+    def test_no_damage_tags_no_flag(self):
+        self.assertEqual(parse_damage_lines("Grants <speed>{{ ms }}% Move Speed</speed>.", set(), {"MS"}), ([], []))
+
+    def test_duplicate_lines_kept_once(self):
+        t = "<magicDamage>{{ d }} magic damage</magicDamage> then <magicDamage>{{ d }} magic damage</magicDamage>"
+        self.assertEqual(len(parse_damage_lines(t, {"D"}, set())[0]), 1)
+
+
+def _dd_spell(sid, tooltip, maxrank=5):
+    return {"id": sid, "name": sid + " name", "tooltip": tooltip, "maxrank": maxrank}
+
+
+DD_ANNIE = {"id": "Annie", "passive": {"name": "Pyromania"}, "spells": [
+    _dd_spell("AnnieQ", "<magicDamage>{{ totaldamage }} magic damage</magicDamage>"),
+    _dd_spell("AnnieW", "<magicDamage>{{ basedamage }} magic damage</magicDamage>"),
+    _dd_spell("AnnieE", "Shield"), _dd_spell("AnnieR", "<magicDamage>{{ x }}</magicDamage>", 3)]}
+DD_ANNIE_FR = {**DD_ANNIE, "passive": {"name": "Pyromanie"},
+               "spells": [{**s, "name": s["name"] + " fr"} for s in DD_ANNIE["spells"]]}
+ANNIE_BIN = {
+    "Characters/Annie/Spells/AnnieQAbility/AnnieQ": {"mSpell": {
+        "DataValues": [{"name": "BaseDamage", "values": [35, 80, 125]}, {"name": "APRatio", "values": [0.8, 0.8, 0.8]},
+                       {"name": "Unused", "values": [1, 2, 3]}],
+        "mSpellCalculations": {"TotalDamage": _calc({"mDataValue": "BaseDamage", "__type": "NamedDataValueCalculationPart"},
+                                                    {"mDataValue": "APRatio", "__type": "StatByNamedDataValueCalculationPart"}),
+                               "Other": _calc({"mNumber": 1.0, "__type": "NumberCalculationPart"})}}},
+    "Characters/Annie/Spells/AnnieWAbility/AnnieW": {"mSpell": {"mDataValues": [{"mName": "BaseDamage", "mValues": [0, 70, 115]}]}},
+    "Characters/Annie/Spells/AnniePassiveAbility/AnniePassive": {"mSpell": {"DataValues": [{"name": "StunDuration", "values": [1.25]}]}},
+}
+ANNIE_RECORD = {"spellNames": ["AnnieQAbility/AnnieQ", "AnnieWAbility/AnnieW", "AnnieEAbility/AnnieE", "AnnieRAbility/AnnieR"],
+                "mCharacterPassiveSpell": "Characters/Annie/Spells/AnniePassiveAbility/AnniePassive"}
+STRINGS = {"spell_anniepassive_tooltip": "Stuns for @StunDuration@ seconds."}
+
+
+class BuildSpells(unittest.TestCase):
+    def setUp(self):
+        self.spells = build_spells(DD_ANNIE, DD_ANNIE_FR, ANNIE_BIN, ANNIE_RECORD, STRINGS)
+
+    def test_order_ranks_and_names(self):
+        self.assertEqual([s["key"] for s in self.spells], ["P", "Q", "W", "E", "R"])
+        self.assertEqual(self.spells[0]["maxrank"], 1)
+        self.assertEqual(self.spells[0]["name"], {"en": "Pyromania", "fr": "Pyromanie"})
+        self.assertEqual(self.spells[1]["maxrank"], 5)
+        self.assertEqual(self.spells[1]["name"], {"en": "AnnieQ name", "fr": "AnnieQ name fr"})
+
+    def test_q_lines_calcs_and_trimmed_values(self):
+        q = self.spells[1]
+        self.assertEqual(q["lines"], [{"type": "magic", "terms": [{"calc": "TotalDamage", "kind": "flat"}]}])
+        self.assertEqual(sorted(q["calcs"]), ["TotalDamage"])
+        self.assertEqual(sorted(q["values"]), ["APRatio", "BaseDamage"])
+        self.assertEqual(q["values"]["BaseDamage"][1], 80)
+
+    def test_m_prefixed_data_values(self):
+        self.assertEqual(self.spells[2]["lines"][0]["terms"], [{"value": "BaseDamage", "kind": "flat"}])
+        self.assertEqual(self.spells[2]["values"]["BaseDamage"], [0, 70, 115])
+
+    def test_missing_bin_spell_and_unparsed_flags(self):
+        self.assertIn("no_cdragon_spell", self.spells[3]["flags"])
+        self.assertIn("unparsed_tooltip", self.spells[4]["flags"])
+
+    def test_passive_from_strings_without_damage(self):
+        self.assertEqual(self.spells[0]["lines"], [])
+        self.assertEqual(self.spells[0]["flags"], [])
+
+    def test_passive_without_tooltip_flags(self):
+        spells = build_spells(DD_ANNIE, DD_ANNIE_FR, ANNIE_BIN, ANNIE_RECORD, {})
+        self.assertIn("no_tooltip", spells[0]["flags"])
+
+    def test_string_reference_resolved(self):
+        strings = {"spell_anniepassive_tooltip": "{{Spell_Inner}}", "spell_inner": "<magicDamage>@StunDuration@ magic damage</magicDamage>"}
+        spells = build_spells(DD_ANNIE, DD_ANNIE_FR, ANNIE_BIN, ANNIE_RECORD, strings)
+        self.assertEqual(spells[0]["lines"][0]["terms"], [{"value": "StunDuration", "kind": "flat"}])
+
+    def test_skill_rank_flags(self):
+        self.assertEqual(skill_rank_flags(self.spells), [])
+        self.assertEqual(skill_rank_flags([{"key": "Q", "maxrank": 6}, {"key": "R", "maxrank": 3}]), ["custom_skill_ranks"])
 
 
 if __name__ == "__main__":

@@ -52,8 +52,20 @@ assert "1036" in I and "2003" not in I
 # Kalista's Black Spear (consumable) and Scarecrow Effigy (trinket) are not slot items, so they are left out.
 assert "3599" not in I and "3330" not in I
 assert "no_cdragon_record" not in C["MonkeyKing"]["flags"]
-assert not [c for c in C.values() if c["flags"]], [c["id"] for c in C.values() if c["flags"]]
+assert not [c for c in C.values() if set(c["flags"]) - {"custom_skill_ranks"}], \
+    [(c["id"], c["flags"]) for c in C.values() if set(c["flags"]) - {"custom_skill_ranks"}]
+assert {"Udyr", "Jayce", "Elise", "Nidalee"} <= {c["id"] for c in C.values() if "custom_skill_ranks" in c["flags"]}
+
+# Spells (stage 2).
+assert all([s["key"] for s in c["spells"]] == ["P", "Q", "W", "E", "R"] for c in C.values())
+annie_q = C["Annie"]["spells"][1]
+assert annie_q["values"]["BaseDamage"][1] == 80, annie_q["values"]  # value lists are indexed by rank
+assert [l["type"] for l in annie_q["lines"]] == ["magic"], annie_q["lines"]
+assert any(t["kind"] == "targetMissing" for l in C["Garen"]["spells"][4]["lines"] for t in l["terms"])
+assert any(t["kind"] == "targetMax" for l in C["Vayne"]["spells"][2]["lines"] for t in l["terms"])
 report = (root / "data" / f"{D['patch']}-report.txt").read_text(encoding="utf-8")
 assert "== Unknown stats ==\n(none)" in report, "report lists unknown stat names"
 assert "== Stats object mismatches ==\n(none)" in report, "report lists stats object mismatches"
+coverage = float(report.split("damage lines fully readable: ")[1].split("(")[1].split("%")[0])
+assert coverage >= 80, f"spell coverage fell to {coverage}%"
 print("check OK")
