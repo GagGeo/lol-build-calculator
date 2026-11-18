@@ -1,6 +1,8 @@
 """Sanity checks on the generated data. Run after prep.py; exits 1 on the first failure.
 
-Pinned values are for patch 16.23.1: update them when a patch legitimately changes them.
+Pinned values (counts, Jinx, Black Cleaver...) are for patch 16.23.1. When a new patch fails an
+assert below because Riot changed that value on purpose, update the value here (and in
+engine.real.test.js if it fails there too).
 """
 import json
 import pathlib
@@ -24,8 +26,23 @@ if todo_items or todo_runes:
         print(f"REVIEW rune {r} {D['runes']['byId'][r]['name']['en']}: add to runeStats or runeStatsReviewed in rules.py")
     sys.exit(1)
 
+# A hand rule whose item, rune or champion changed this patch may be stale.
+if R.get("rulesCheckedForPatch") != D["patch"]:
+    changed = D["review"].get("changed", {})
+    ruled_items = set(R["itemStatPassives"]) | set(R["itemStatPassivesUnknown"])
+    ruled_champs = set(R["stackers"]) | set(R.get("championStatsUnknown", []))
+    stale = ([f"item {i} {D['items'][i]['name']['en']}" for i in changed.get("item", []) if i in ruled_items]
+             + [f"rune {r} {D['runes']['byId'][r]['name']['en']}" for r in changed.get("rune", []) if r in R["runeStats"]]
+             + [f"champion {c}" for c in changed.get("champion", []) if c in ruled_champs])
+    for s in stale:
+        print(f"REVIEW {s}: changed since {D['review'].get('comparedWith')}, check its rule in rules.py")
+    if stale:
+        print(f"Then set rulesCheckedForPatch to \"{D['patch']}\" in rules.py.")
+        sys.exit(1)
+
 C, I = D["champions"], D["items"]
 assert len(C) == 173, len(C)
+assert len(I) == 204, len(I)
 assert C["Jinx"]["base"]["hp"] == 610 and C["Jinx"]["base"]["hpperlevel"] == 105, C["Jinx"]["base"]
 assert I["3071"]["stats"] == {"ad": 45, "hp": 400, "ah": 20}, I["3071"]["stats"]
 assert I["3071"]["gold"]["total"] == 3000
@@ -38,4 +55,5 @@ assert "no_cdragon_record" not in C["MonkeyKing"]["flags"]
 assert not [c for c in C.values() if c["flags"]], [c["id"] for c in C.values() if c["flags"]]
 report = (root / "data" / f"{D['patch']}-report.txt").read_text(encoding="utf-8")
 assert "== Unknown stats ==\n(none)" in report, "report lists unknown stat names"
+assert "== Stats object mismatches ==\n(none)" in report, "report lists stats object mismatches"
 print("check OK")

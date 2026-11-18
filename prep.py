@@ -75,7 +75,10 @@ DD_STATS = {
     "PercentLifeStealMod": ("lifesteal", 100), "FlatMovementSpeedMod": ("ms", 1),
     "PercentMovementSpeedMod": ("msPct", 100),
 }
-POSSIBLE_PASSIVE = re.compile(r"(Increases your|equal to|based on|converts?|per \d+ bonus)", re.I)
+# Any stat named outside the <stats> block might be a stat-changing passive; every hit gets sorted in rules.py.
+POSSIBLE_PASSIVE = re.compile(r"(Health|Mana|Attack Damage|Ability Power|Armor|Magic Resist|Attack Speed|Ability Haste|"
+                              r"Move Speed|Critical Strike|Lethality|Omnivamp|Life Steal|Heal and Shield Power|Tenacity|"
+                              r"Adaptive Force|Penetration)")
 GROUP_PREFIX = "Items/ItemGroups/"
 
 
@@ -195,8 +198,11 @@ def build_champions(dd_en, dd_fr, records):
 def diff_patches(old, new):
     """'changed/new/removed <item|champion> <id>' lines between two DATA dicts."""
     lines = []
-    for section, label in (("items", "item"), ("champions", "champion")):
-        a, b = old.get(section, {}), new.get(section, {})
+    sections = (("items", "item", lambda d: d.get("items", {})),
+                ("champions", "champion", lambda d: d.get("champions", {})),
+                ("runes", "rune", lambda d: d.get("runes", {}).get("byId", {})))
+    for _, label, pick in sections:
+        a, b = pick(old), pick(new)
         lines += [f"changed {label} {k}" for k in sorted(a.keys() & b.keys()) if a[k] != b[k]]
         lines += [f"new {label} {k}" for k in sorted(b.keys() - a.keys())]
         lines += [f"removed {label} {k}" for k in sorted(a.keys() - b.keys())]
@@ -276,6 +282,13 @@ def main(argv):
     previous = sorted((p for p in out_dir.glob("*.json") if p.stem != patch),
                       key=lambda p: [int(x) for x in p.stem.split(".")])
     diff = diff_patches(json.loads(previous[-1].read_text(encoding="utf-8")), data) if previous else []
+    changed = {"item": [], "champion": [], "rune": []}
+    for line in diff:
+        kind, label, key = line.split()
+        if kind == "changed":
+            changed[label].append(key)
+    data["review"]["changed"] = changed
+    data["review"]["comparedWith"] = previous[-1].stem if previous else None
 
     text = json.dumps(data, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
     (root / "data.js").write_text(f"window.DATA = {text};\n", encoding="utf-8")

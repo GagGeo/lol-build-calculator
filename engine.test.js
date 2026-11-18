@@ -113,3 +113,19 @@ test('gold warning', () => {
   assert.equal(Engine.goldWarning(D, 18, ['bf']), null);
   assert.equal(Engine.goldWarning(D, 1, []), null);
 });
+
+// Final-review fixes.
+test('item passive adds a flat stat', () => near(stats({items: ['horn']}).total.hpregen, 20));
+test('stacking item counts only when stacked', () => {
+  assert.equal(stats({items: ['tear']}).bonus.mp || 0, 0);
+  near(stats({items: ['tear'], stacked: true}).bonus.mp, 360);
+});
+test('convert from base stat', () => near(stats({level: 1, items: ['sg']}).bonus.ad, 30));
+test('champion with an uncounted passive is flagged', () =>
+  assert.deepEqual(stats({champ: 'Ranger'}).flags, ['unknown_champion:Ranger']));
+test('base health regen percent multiplies base regen', () => {
+  const s = Engine.championStats({...D, champions: {...D.champions, Testo: {...D.champions.Testo,
+    base: {...D.champions.Testo.base, hpregen: 5}}}}, {champ: 'Testo', level: 1, items: ['regen'], runes: null, stacked: false, stacks: 0});
+  near(s.total.hpregen, 10);
+});
+test('crit chance is capped at 100', () => near(stats({items: ['critI', 'critI']}).total.crit, 100));

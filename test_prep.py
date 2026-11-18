@@ -57,6 +57,8 @@ EN = {"data": {
     "4444": _item("Deathcap", "<stats><attention>130</attention> Ability Power</stats><br>"
                   "<passive>Opus</passive> Increases your total Ability Power by 30%."),
     "6666": _item("Odd", "<stats><attention>5</attention> Foo Bar</stats>"),
+    "4633": _item("Riftmaker", "<stats><attention>350</attention> Health</stats><br>"
+                  "<passive>Void Infusion</passive> Gain 2% of your bonus Health as Ability Power."),
     "323107": _item("Redemption", "<stats><attention>15</attention> Ability Haste</stats>"),
 }}
 FR = {"data": {k: {**v, "name": "Couperet noir" if k == "3071" else "FR " + v["name"],
@@ -106,6 +108,7 @@ class BuildItems(unittest.TestCase):
         self.assertIn("stats mismatch: item 5555", text)
         self.assertNotIn("stats mismatch: item 3006", text)
         self.assertIn("possible stat passive: 4444", text)
+        self.assertIn("possible stat passive: 4633", text)
         self.assertNotIn("possible stat passive: 3071", text)
 
 
@@ -174,6 +177,14 @@ class DiffPatches(unittest.TestCase):
         self.assertEqual(diff_patches({"items": {"1": {"stats": {"ad": 10}}, "3": {}}, "champions": {}},
                                       {"items": {"1": {"stats": {"ad": 12}}, "2": {}}, "champions": {}}),
                          ["changed item 1", "new item 2", "removed item 3"])
+
+
+
+class DiffRunes(unittest.TestCase):
+    def test_diff_includes_runes(self):
+        old = {"items": {}, "champions": {}, "runes": {"byId": {"8010": {"desc": {"en": "1.8-4"}}}}}
+        new = {"items": {}, "champions": {}, "runes": {"byId": {"8010": {"desc": {"en": "2-4"}}}}}
+        self.assertEqual(diff_patches(old, new), ["changed rune 8010"])
 
 
 if __name__ == "__main__":

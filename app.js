@@ -96,6 +96,7 @@ function createPanel(container, side) {
   // --- events -------------------------------------------------------------
   ui.champ.addEventListener('change', () => {
     state.champ = ui.champ.value;
+    state.stacks = 0; // stacks belong to one champion's passive
     const pruned = Engine.pruneBuild(DATA, state.champ, state.items);
     state.items = pruned.items;
     removedNotice = pruned.removed.length
@@ -190,15 +191,23 @@ function createPanel(container, side) {
     const warn = Engine.goldWarning(DATA, state.level, state.items);
     if (warn) notes.push(t('goldWarning', {cost: fmt(warn.cost, 0), typical: fmt(warn.typical, 0)}));
     const s = Engine.championStats(DATA, {...state});
-    for (const f of s.flags) notes.push(t('unknownPassive', {item: nm(DATA.items[f.split(':')[1]].name)}));
+    for (const f of s.flags) {
+      const [kind, id] = f.split(':');
+      notes.push(kind === 'unknown_champion' ? t('unknownChampion', {champ: nm(DATA.champions[id].name)})
+        : t('unknownPassive', {item: nm(DATA.items[id].name)}));
+    }
     ui.notices.replaceChildren(...notes.map((n) => el('p', {class: 'notice', text: n})));
 
     const head = el('tr', {}, ...['stat', 'base', 'bonus', 'total'].map((k) => el('th', {scope: 'col', text: t(k)})));
-    const rows = STAT_ORDER.filter((k) => (s.base[k] || 0) || (s.bonus[k] || 0) || (s.total[k] || 0)).map((k) => {
+    // Mana only means something for mana users; energy users get it relabelled; other resources are hidden.
+    const resource = DATA.champions[state.champ].resource;
+    const shown = (k) => k !== 'mp' || resource === 'Mana' || resource === 'Energy';
+    const rows = STAT_ORDER.filter((k) => shown(k) && ((s.base[k] || 0) || (s.bonus[k] || 0) || (s.total[k] || 0))).map((k) => {
       const digits = k === 'as' ? 3 : 1;
       const baseV = s.base[k] ? fmt(s.base[k], digits) : '';
       const bonusV = s.bonus[k] ? (k === 'as' ? fmt(s.bonus[k]) + '%' : '+' + fmt(s.bonus[k])) : '';
-      return el('tr', {}, el('th', {scope: 'row', text: t('stat_' + k)}), el('td', {text: baseV}),
+      const statName = k === 'mp' && resource === 'Energy' ? t('stat_energy') : t('stat_' + k);
+      return el('tr', {}, el('th', {scope: 'row', text: statName}), el('td', {text: baseV}),
         el('td', {text: bonusV}), el('td', {class: 'total', text: fmt(s.total[k] ?? 0, digits)}));
     });
     ui.stats.replaceChildren(el('thead', {}, head), el('tbody', {}, ...rows));

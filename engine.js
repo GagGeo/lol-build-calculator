@@ -42,6 +42,10 @@ const Engine = (() => {
     const fromItems = {};
     for (const id of items) {
       for (const [k, v] of Object.entries(data.items[id].stats)) { add(bonus, k, v); add(fromItems, k, v); }
+      // Flat passive stats ("add") and stacking items ("stacked", only when fully stacked) count as item stats.
+      for (const p of rules.itemStatPassives[id] || []) {
+        if (p.op === 'add' || (p.op === 'stacked' && sel.stacked)) { add(bonus, p.stat, p.value); add(fromItems, p.stat, p.value); }
+      }
     }
 
     const runeMuls = [];
@@ -99,13 +103,20 @@ const Engine = (() => {
     }
     for (const c of passives.filter((p) => p.op === 'convert')) {
       const source = c.basis === 'items' ? fromItems[c.from] || 0
-        : c.basis === 'total' ? total[c.from] || 0 : bonus[c.from] || 0;
+        : c.basis === 'total' ? total[c.from] || 0
+          : c.basis === 'base' ? base[c.from] || 0 : bonus[c.from] || 0;
       total[c.to] = (total[c.to] || 0) + source * c.value;
     }
     for (const k of Object.keys(total)) {
       if (BASE_KEYS.includes(k) || k === 'ap') bonus[k] = total[k] - (base[k] || 0);
     }
 
+    // Base Health/Mana Regen % multiplies the champion's base regen only.
+    total.hpregen = base.hpregen * (1 + (bonus.hpRegenPct || 0) / 100) + (fromItems.hpregen || 0);
+    total.mpregen = base.mpregen * (1 + (bonus.mpRegenPct || 0) / 100) + (fromItems.mpregen || 0);
+    bonus.hpregen = total.hpregen - base.hpregen;
+    bonus.mpregen = total.mpregen - base.mpregen;
+    if (total.crit !== undefined) total.crit = Math.min(100, total.crit);
     total.as = Math.min(rules.asCap, b.as + b.asratio * ((bonus.as || 0) / 100 + (b.asperlevel / 100) * g));
     let ms = (b.ms + (bonus.ms || 0)) * (1 + (bonus.msPct || 0) / 100);
     if (ms > 490) ms = 415 + 75 * 0.8 + (ms - 490) * 0.5;
@@ -115,6 +126,7 @@ const Engine = (() => {
 
     const flags = items.filter((id) => (rules.itemStatPassivesUnknown || []).includes(id))
       .map((id) => 'unknown_passive:' + id);
+    if ((rules.championStatsUnknown || []).includes(sel.champ)) flags.push('unknown_champion:' + sel.champ);
     return {base, bonus, total, flags};
   }
 

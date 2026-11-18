@@ -8,16 +8,86 @@ patch 16.23.1: 173 champions, 204 items, 135 item groups, 62 runes
 (none)
 
 == Possible stat passives (review in rules.py) ==
+possible stat passive: 1054 Doran's Shield
+possible stat passive: 1056 Doran's Ring
+possible stat passive: 1082 Dark Seal
+possible stat passive: 1083 Cull
+possible stat passive: 1102 Gustwalker Hatchling
+possible stat passive: 1106 Gustwalker Hatchling
+possible stat passive: 2051 Guardian's Horn
+possible stat passive: 2065 Shurelya's Battlesong
 possible stat passive: 2501 Overlord's Bloodmail
+possible stat passive: 2503 Blackfire Torch
+possible stat passive: 2512 Fiendhunter Bolts
 possible stat passive: 2517 Endless Hunger
-possible stat passive: 2523 Hexoptics C44
+possible stat passive: 2522 Actualizer
+possible stat passive: 2524 Bandlepipes
+possible stat passive: 2525 Protoplasm Harness
+possible stat passive: 2526 Whispering Circlet
 possible stat passive: 3003 Archangel's Staff
+possible stat passive: 3004 Manamune
+possible stat passive: 3008 Gluttonous Greaves
+possible stat passive: 3026 Guardian Angel
+possible stat passive: 3032 Yun Tal Wildarrows
 possible stat passive: 3036 Lord Dominik's Regards
-possible stat passive: 3072 Bloodthirster
+possible stat passive: 3041 Mejai's Soulstealer
+possible stat passive: 3044 Phage
+possible stat passive: 3053 Sterak's Gage
+possible stat passive: 3070 Tear of the Goddess
+possible stat passive: 3071 Black Cleaver
+possible stat passive: 3073 Experimental Hexplate
+possible stat passive: 3074 Ravenous Hydra
+possible stat passive: 3078 Trinity Force
 possible stat passive: 3083 Warmog's Armor
+possible stat passive: 3084 Heartsteel
 possible stat passive: 3089 Rabadon's Deathcap
+possible stat passive: 3107 Redemption
+possible stat passive: 3110 Frozen Heart
+possible stat passive: 3112 Guardian's Orb
+possible stat passive: 3118 Malignance
+possible stat passive: 3119 Winter's Approach
+possible stat passive: 3124 Guinsoo's Rageblade
+possible stat passive: 3139 Mercurial Scimitar
+possible stat passive: 3142 Youmuu's Ghostblade
+possible stat passive: 3143 Randuin's Omen
+possible stat passive: 3153 Blade of The Ruined King
+possible stat passive: 3155 Hexdrinker
+possible stat passive: 3156 Maw of Malmortius
 possible stat passive: 3161 Spear of Shojin
+possible stat passive: 3168 Immortal Path
+possible stat passive: 3170 Swiftmarch
+possible stat passive: 3171 Crimson Lucidity
+possible stat passive: 3181 Hullbreaker
+possible stat passive: 3222 Mikael's Blessing
+possible stat passive: 3302 Terminus
+possible stat passive: 3504 Ardent Censer
+possible stat passive: 3508 Essence Reaver
+possible stat passive: 3742 Dead Man's Plate
+possible stat passive: 3802 Lost Chapter
+possible stat passive: 3803 Catalyst of Aeons
+possible stat passive: 3876 Solstice Sleigh
+possible stat passive: 4005 Imperial Mandate
+possible stat passive: 4401 Force of Nature
+possible stat passive: 4629 Cosmic Drive
+possible stat passive: 4633 Riftmaker
+possible stat passive: 4645 Shadowflame
+possible stat passive: 4646 Stormsurge
+possible stat passive: 6333 Death's Dance
+possible stat passive: 6610 Sundered Sky
+possible stat passive: 6616 Staff of Flowing Water
+possible stat passive: 6620 Echoes of Helia
+possible stat passive: 6621 Dawncore
+possible stat passive: 6631 Stridebreaker
+possible stat passive: 6653 Liandry's Torment
+possible stat passive: 6657 Rod of Ages
+possible stat passive: 6665 Jak'Sho, The Protean
 possible stat passive: 6672 Kraken Slayer
+possible stat passive: 6673 Immortal Shieldbow
+possible stat passive: 6676 The Collector
+possible stat passive: 6694 Serylda's Grudge
+possible stat passive: 6697 Hubris
+possible stat passive: 6699 Voltaic Cyclosword
+possible stat passive: 8010 Bloodletter's Curse
 
 == Possible rune stats (review in rules.py) ==
 8008 Lethal Tempo
