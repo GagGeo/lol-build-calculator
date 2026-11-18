@@ -557,3 +557,33 @@ test('no NaN for any rankable stat', () => {
     assert.ok(Engine.rankStat(DR, {stat, level: 18}).rows.every((r) => Number.isFinite(r.value)), stat);
   }
 });
+
+// Stage 4 final-review fixes.
+test('attack speed ties use the displayed precision (3 decimals)', () => {
+  const two = {Slow: {...DR.champions.Annie, id: 'Slow', name: {en: 'Slow', fr: 'Slow'}, base: {...DR.champions.Annie.base, as: 0.64, asperlevel: 0}},
+               Quick: {...DR.champions.Annie, id: 'Quick', name: {en: 'Quick', fr: 'Quick'}, base: {...DR.champions.Annie.base, as: 0.66, asperlevel: 0}}};
+  const rows = Engine.rankStat({...DR, champions: two}, {stat: 'as', level: 1, count: 2, maxGold: 100}).rows;
+  assert.notEqual(rows[0].value.toFixed(3), rows[1].value.toFixed(3));
+  assert.deepEqual(rows.map((r) => r.rank), [1, 2]);
+});
+test('move speed rune pages try Base % move speed runes (Celerity-like)', () => {
+  const DM = {...DR, rules: {...DR.rules, runeStats: {...DR.rules.runeStats, 222: [{stat: 'msPct', value: 1, always: true}]}}};
+  const page = Engine.bestRunePage(DM, {champ: 'Annie', level: 18, items: [], runes: null, stacked: true, stacks: 0}, 'ms');
+  assert.ok([page.keystone, ...page.primaryRunes, ...page.secondaryRunes].includes(222));
+});
+test('mana regen ranks only mana users', () =>
+  assert.ok(Engine.rankStat(DR, {stat: 'mpregen', level: 18, count: 50}).rows.every((r) => DR.champions[r.champ].resource === 'Mana')));
+test('tenacity is capped at 100', () => {
+  const DT = {...DR, items: {...DR.items, ten: rItem('ten', {tenacity: 40}, 100)}};
+  assert.ok(Engine.championStats(DT, {champ: 'Annie', level: 18, items: ['ten', 'ten', 'ten'], runes: null, stacked: false, stacks: 0}).total.tenacity <= 100);
+});
+test('a stat that scales with the champion: the best champion gets its own best build', () => {
+  // 'pct' adds Base Health Regen %: worth a lot only on a champion with high base regen.
+  const DH = {...DR,
+    champions: {...DR.champions, Regen: {...DR.champions.Annie, id: 'Regen', name: {en: 'Regen', fr: 'Regen'},
+      base: {...DR.champions.Annie.base, hpregen: 50, hpregenperlevel: 0}}},
+    items: {...DR.items, flat: rItem('flat', {}, 300), pct: rItem('pct', {hpRegenPct: 100}, 300)},
+    rules: {...DR.rules, itemStatPassives: {...DR.rules.itemStatPassives, flat: [{op: 'add', stat: 'hpregen', value: 10}]}}};
+  const regen = Engine.rankStat(DH, {stat: 'hpregen', level: 18, count: 50}).rows.find((r) => r.champ === 'Regen');
+  near(regen.value, 50 * 7);   // 6 × 'pct' = +600% of 50, better than any 'flat' mix on this champion
+});

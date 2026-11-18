@@ -117,6 +117,7 @@ const Engine = (() => {
     bonus.hpregen = total.hpregen - base.hpregen;
     bonus.mpregen = total.mpregen - base.mpregen;
     if (total.crit !== undefined) total.crit = Math.min(100, total.crit);
+    if (total.tenacity !== undefined) total.tenacity = Math.min(100, total.tenacity);
     total.as = Math.min(rules.asCap, b.as + b.asratio * ((bonus.as || 0) / 100 + (b.asperlevel / 100) * g));
     let ms = (b.ms + (bonus.ms || 0)) * (1 + (bonus.msPct || 0) / 100);
     if (ms > 490) ms = 415 + 75 * 0.8 + (ms - 490) * 0.5;
@@ -669,8 +670,10 @@ const Engine = (() => {
   // Only runes whose stat rules touch the stat are worth trying; other rows take their first rune.
   function bestRunePage(data, sel, stat) {
     const rules = data.rules;
+    // Stats that raise the ranked one: move speed %, base regen %, adaptive force.
+    const related = {ms: ['msPct'], hpregen: ['hpRegenPct'], mpregen: ['mpRegenPct'], ad: ['adaptive'], ap: ['adaptive']}[stat] || [];
     const touches = (e) => (e.always || sel.stacked) && (e.op === 'jack' ? ['ah', 'ad', 'ap'].includes(stat)
-      : e.stat === stat || (e.stat === 'adaptive' && (stat === 'ad' || stat === 'ap')));
+      : e.stat === stat || related.includes(e.stat));
     const options = (ids) => {
       const helpful = ids.filter((id) => (rules.runeStats[id] || []).some(touches));
       return helpful.length ? helpful : [ids[0]];
@@ -720,17 +723,27 @@ const Engine = (() => {
     const stacks = Math.max(0, Math.round(Number(opts.stacks)) || 0);
     const maxGold = Number(opts.maxGold) > 0 ? Number(opts.maxGold) : null;
     const rules = data.rules;
-    const shared = bestBuilds(data, {stat, level, maxGold, stacked});
+    const usesMana = (c) => data.champions[c].resource === 'Mana';
+    const champs = Object.keys(data.champions).filter((c) => !['mp', 'mpregen'].includes(stat) || usesMana(c));
+    // Builds are searched on the default reference champion and on the champion with the most of the stat
+    // without items: items that scale with base values (Base Regen %) are worth most there.
+    const bare = (c) => championStats(data, {champ: c, level, items: [], runes: null, stacked, stacks: 0}).total[stat] || 0;
+    const top = champs.reduce((best, c) => (bare(c) > bare(best) ? c : best), champs[0]);
+    const byKey = new Map();
+    for (const b of [...bestBuilds(data, {stat, level, maxGold, stacked}), ...(top ? bestBuilds(data, {stat, level, maxGold, stacked}, top) : [])]) {
+      const key = b.items.filter(Boolean).sort().join(',');
+      if (!byKey.has(key)) byKey.set(key, b);
+    }
+    const shared = [...byKey.values()];
     const rows = [];
-    for (const champ of Object.keys(data.champions)) {
-      if (stat === 'mp' && data.champions[champ].resource !== 'Mana') continue;
+    for (const champ of champs) {
       const sel = {champ, level, runes: null, stacked, stacks};
       let builds = shared.filter((b) => validateBuild(data, champ, b.items).length === 0);
       if (!builds.length) builds = bestBuilds(data, {stat, level, maxGold, stacked}, champ);
-      const top = builds.map((b) => ({b, v: championStats(data, {...sel, items: b.items}).total[stat] || 0}))
+      const best3 = builds.map((b) => ({b, v: championStats(data, {...sel, items: b.items}).total[stat] || 0}))
         .sort((x, y) => y.v - x.v).slice(0, 3);
       let best = null;
-      for (const {b} of top) {
+      for (const {b} of best3) {
         const runes = bestRunePage(data, {...sel, items: b.items}, stat);
         const v = championStats(data, {...sel, items: b.items, runes}).total[stat] || 0;
         if (!best || v > best.value) best = {items: b.items, runes, value: v};
@@ -742,8 +755,9 @@ const Engine = (() => {
     }
     const name = (c) => data.champions[c].name.en;
     rows.sort((a, b) => b.value - a.value || name(a.champ).localeCompare(name(b.champ)));
+    const precision = stat === 'as' ? 1000 : 10; // ties at the precision the page shows
     rows.forEach((r, i) => {
-      r.rank = i && Math.round(r.value * 10) === Math.round(rows[i - 1].value * 10) ? rows[i - 1].rank : i + 1;
+      r.rank = i && Math.round(r.value * precision) === Math.round(rows[i - 1].value * precision) ? rows[i - 1].rank : i + 1;
     });
     return {rows: rows.slice(0, count), ms: Date.now() - t0};
   }

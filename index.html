@@ -37,6 +37,7 @@
   :focus-visible { outline: 2px solid var(--teal); outline-offset: 2px; }
   select { width: 100%; min-width: 0; }
 
+  [hidden] { display: none !important; } /* .panel's display: grid would otherwise show hidden tab panels */
   .tabs { max-width: 1200px; margin: 0 auto 12px; padding: 0 16px; display: flex; gap: 8px; }
   .tabs button { color: var(--muted); border-color: var(--line); }
   .tabs button[aria-selected="true"] { color: var(--gold); border-color: var(--gold); font-weight: 600; }

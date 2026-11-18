@@ -85,3 +85,11 @@ test('rankings on real data (any patch): fast, legal, sorted, sensible', () => {
     }
   }
 });
+
+test('rankings: no gold limit is never worse than a gold limit (any patch)', () => {
+  for (const stat of ['hpregen', 'mpregen', 'ms', 'hp', 'armor']) {
+    const free = Engine.rankStat(D, {stat, level: 18, count: 1}).rows[0].value;
+    const capped = Engine.rankStat(D, {stat, level: 18, count: 1, maxGold: 3000}).rows[0].value;
+    assert.ok(free >= capped - 1e-9, `${stat}: ${free} < ${capped}`);
+  }
+});

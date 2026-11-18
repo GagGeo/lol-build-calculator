@@ -474,7 +474,8 @@ function createRankings(section) {
     ui.note.textContent = result ? t('rankNote') : t('rankEmpty');
     if (!result) return;
     const digits = opts.stat === 'as' ? 3 : 1;
-    const head = el('thead', {}, el('tr', {}, ...['rankCol', 'champion', 'valueCol', 'itemsCol', 'runesCol', '']
+    // The value column names the stat that was ranked (the select may have changed since).
+    const head = el('thead', {}, el('tr', {}, ...['rankCol', 'champion', 'stat_' + opts.stat, 'itemsCol', 'runesCol', '']
       .map((k) => el('th', {scope: 'col', text: k ? t(k) : ''}))));
     const notes = new Set();
     const rows = result.rows.map((r) => {
