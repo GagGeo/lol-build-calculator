@@ -265,3 +265,28 @@ Each stage is usable on its own and is built in this order.
 - The first version of the hand-rule lists.
 - Automating `prep.py` with a scheduled GitHub job. Optional, and only after it
   runs cleanly by hand.
+
+## Stage 4: stat rankings (added 2026-11-18)
+
+**Intent.** "What's the most X anyone can have?" On a second tab, the user picks one stat and gets a
+ranked table of the N best combinations (champion, level, 6 items, rune page) that maximize it.
+
+**Decisions** (proposed by Claude, approved by the user when asking for the plan):
+- On a **second tab** ("Rankings"); the calculator stays as it is on the first tab.
+- **Stats:** every stat of the stats table except attack range (items don't change it). Mana is
+  ranked only among champions that use mana.
+- **N** defaults to 10, adjustable from 1 to 50.
+- **One row per champion** (their best build), so the table compares champions.
+- **Level:** a field, default 18.
+- **Stacks:** champion stacks (Veigar, Cho'Gath, Sion...) default to 0, with a field to set a
+  count. An "assume fully stacked" checkbox, as on the calculator, controls stacking items and runes.
+- **Optional gold limit** for the 6 items.
+- **Each row:** rank, champion, level, value, the items, the rune page, and a button that opens
+  that build in the calculator.
+- **Search:** exact enumeration is impossible (billions of builds). The search is a beam search over
+  items, evaluated with the real stat engine, so multipliers and caps count. It shows "best found",
+  not a proof of optimum. Tests compare it with brute force on small item sets.
+- **Run on click**, under 2 s.
+
+**Anti-goal:** a value that ignores a flagged item effect. Rows whose build includes an item with an
+uncounted stat effect, or a champion with an uncounted stat passive, are marked "partly counted".
