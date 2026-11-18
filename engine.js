@@ -291,8 +291,63 @@ const Engine = (() => {
     return ranks;
   }
 
+  // --- Stage 2: damage ----------------------------------------------------------------------------
+  // Damage after resistances. Order: shred (% reduction), % penetration, flat penetration/lethality (flat).
+  function mitigate(raw, type, attacker, target, shred = {armor: 0, mr: 0}) {
+    if (type === 'true') return raw;
+    const physical = type === 'physical';
+    const a = attacker.total;
+    let r = (physical ? target.total.armor : target.total.mr) || 0;
+    if (r > 0) {
+      const penPct = (physical ? a.armorPenPct : a.magicPenPct) || 0;
+      const flat = (physical ? a.lethality : a.magicPen) || 0;
+      r = Math.max(0, r * (1 - (physical ? shred.armor : shred.mr)) * (1 - penPct / 100) - flat);
+    }
+    return raw * (r >= 0 ? 100 / (100 + r) : 2 - 100 / (100 - r));
+  }
+
+  function autoAttack(attacker, target, rules) {
+    const ad = attacker.total.ad || 0;
+    const chance = Math.min(100, attacker.total.crit || 0) / 100;
+    const mult = rules.critBase + (attacker.bonus.critDmg || 0) / 100;
+    const hit = (raw) => mitigate(raw, 'physical', attacker, target);
+    return {nonCrit: hit(ad), crit: hit(ad * mult), average: hit(ad * (1 + chance * (mult - 1)))};
+  }
+
+  function spellDamage(data, side, target, key, lineIndex = 0) {
+    const champ = data.champions[side.champ];
+    const spell = champ.spells.find((s) => s.key === key);
+    const rank = key === 'P' ? 1 : skillRanks(champ, side.level, side.priority)[key];
+    if (!rank) return {learned: false, rank: 0, raw: 0, damage: 0, type: null, unsupported: []};
+    const unsupported = spell.flags.filter((f) => f === 'unparsed_tooltip');
+    const line = spell.lines[lineIndex];
+    if (!line) return {learned: true, rank, raw: 0, damage: 0, type: null, noDamage: true, unsupported};
+    const ctx = {rank, level: clampLevel(side.level), stats: side.stats, rules: data.rules};
+    const maxHp = target.stats.total.hp || 0;
+    const current = target.currentHp ?? maxHp;
+    let raw = 0;
+    for (const term of line.terms) {
+      let v;
+      if (term.calc) {
+        const r = evalCalc(spell, term.calc, ctx);
+        unsupported.push(...r.unsupported);
+        v = r.value;
+      } else {
+        const arr = spell.values[term.value] || [];
+        v = arr.length ? arr[Math.min(rank, arr.length - 1)] : 0;
+      }
+      // Target-health terms are fractions; values written as percentages (> 1) are divided by 100.
+      const frac = term.kind === 'flat' ? v : v > 1 ? v / 100 : v;
+      raw += term.kind === 'targetMax' ? frac * maxHp
+        : term.kind === 'targetMissing' ? frac * (maxHp - current)
+          : term.kind === 'targetCurrent' ? frac * current : frac;
+    }
+    return {learned: true, rank, raw, damage: mitigate(raw, line.type, side.stats, target.stats), type: line.type, unsupported};
+  }
+
   return {growth, clampLevel, championStats, ultRank, validateBuild, allowedItems, pruneBuild,
-          validateRunePage, normalizeRunePage, buildCost, goldWarning, evalCalc, skillRanks};
+          validateRunePage, normalizeRunePage, buildCost, goldWarning, evalCalc, skillRanks,
+          mitigate, autoAttack, spellDamage};
 })();
 
 if (typeof module === 'object') module.exports = Engine;

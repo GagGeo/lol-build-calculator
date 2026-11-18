@@ -160,3 +160,55 @@ test('custom ranks follow maxrank', () => {
   assert.ok(r.Q <= 6 && r.R <= 6);
   assert.equal(r.Q + r.W + r.E + r.R, 18);
 });
+
+// Stage 2, Task 4: resistances, basic attacks, single spell damage.
+const {spell} = require('./fixture.js');
+const A = (o = {}) => ({base: {}, bonus: {...o}, total: {...o}});
+const A0 = A();
+const T = (o = {}) => ({base: {}, bonus: {}, total: {armor: 0, mr: 0, hp: 1000, ...o}});
+const RULES2 = {...D.rules, critBase: 1.75};
+test('armor 100 halves physical', () => near(Engine.mitigate(200, 'physical', A0, T({armor: 100})), 100));
+test('magic uses magic resist', () => near(Engine.mitigate(200, 'magic', A0, T({armor: 300, mr: 100})), 100));
+test('true ignores resist', () => near(Engine.mitigate(200, 'true', A0, T({armor: 300})), 200));
+test('pct pen then lethality', () =>
+  near(Engine.mitigate(100, 'physical', A({armorPenPct: 30, lethality: 10}), T({armor: 100})), 100 * 100 / 160));
+test('magic pen pct and flat', () =>
+  near(Engine.mitigate(100, 'magic', A({magicPenPct: 40, magicPen: 10}), T({mr: 100})), 100 * 100 / 150));
+test('pen cannot go below zero', () => near(Engine.mitigate(100, 'physical', A({lethality: 500}), T({armor: 50})), 100));
+test('negative resist amplifies', () => near(Engine.mitigate(100, 'magic', A0, T({mr: -20})), 100 * (2 - 100 / 120)));
+test('shred applies before pen', () => near(Engine.mitigate(100, 'physical', A0, T({armor: 100}), {armor: 0.3, mr: 0}), 100 * 100 / 170));
+test('auto attack crit average', () => {
+  const r = Engine.autoAttack(A({ad: 100, crit: 50}), T(), RULES2);
+  near(r.nonCrit, 100); near(r.crit, 175); near(r.average, 137.5);
+});
+test('auto attack crit damage bonus and armor', () => {
+  const r = Engine.autoAttack(A({ad: 100, crit: 100, critDmg: 40}), T({armor: 100}), RULES2);
+  near(r.crit, 107.5); near(r.average, 107.5);
+});
+
+const RSPELL = spell('R', {values: {BaseDamage: [0, 150, 300, 450], ExecuteDamage: [0, 0.25, 0.3, 0.35]},
+  lines: [{type: 'true', terms: [{value: 'BaseDamage', kind: 'flat'}, {value: 'ExecuteDamage', kind: 'targetMissing'}]}]});
+const ESPELL = spell('E', {values: {Pct: [0, 4, 5, 6, 7, 8]},
+  lines: [{type: 'true', terms: [{value: 'Pct', kind: 'targetMax'}]}]});
+const WSPELL = spell('W', {calcs: {Bad: {parts: [{t: 'x', what: 'CooldownMultiplierCalculationPart'}], pct: false, mult: null, flags: []}},
+  lines: [{type: 'magic', terms: [{calc: 'Bad', kind: 'flat'}]}]});
+const D2 = {...D, rules: RULES2, champions: {...D.champions,
+  Annie: {...D.champions.Testo, id: 'Annie', spells: [spell('P'), QSPELL, WSPELL, ESPELL, RSPELL]}}};
+const side = (o = {}) => ({champ: 'Annie', level: o.level ?? 1, priority: ['Q', 'W', 'E'],
+  stats: Engine.championStats(D2, {champ: 'Annie', level: o.level ?? 1, items: [], runes: null, stacked: false, stacks: 0})});
+const tgt = (o = {}) => ({stats: T({hp: o.maxHp ?? 1000, mr: o.mr ?? 0}), currentHp: o.currentHp ?? o.maxHp ?? 1000});
+test('spell not learned', () => {
+  const r = Engine.spellDamage(D2, side({level: 3}), tgt(), 'R');
+  assert.equal(r.learned, false); assert.equal(r.damage, 0);
+});
+test('annie-like q after magic resist', () => near(Engine.spellDamage(D2, side(), tgt({mr: 100}), 'Q').damage, 40));
+test('missing health term uses current hp', () =>
+  near(Engine.spellDamage(D2, side({level: 6}), tgt({maxHp: 1000, currentHp: 400}), 'R').raw, 150 + 0.25 * 600));
+test('max health term in percent is divided by 100', () =>
+  near(Engine.spellDamage(D2, side({level: 3}), tgt({maxHp: 2000}), 'E').raw, 0.04 * 2000));
+test('unsupported spell reports what', () =>
+  assert.deepEqual(Engine.spellDamage(D2, side({level: 2}), tgt(), 'W').unsupported, ['CooldownMultiplierCalculationPart']));
+test('spell without damage lines', () => {
+  const r = Engine.spellDamage(D2, side(), tgt(), 'P');
+  assert.equal(r.noDamage, true); assert.equal(r.damage, 0);
+});

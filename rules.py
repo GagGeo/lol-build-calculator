@@ -11,6 +11,7 @@ RULES = {
     "shardRows": [[5008, 5005, 5007], [5008, 5010, 5001], [5011, 5013, 5001]],
     "noBoots": ["Cassiopeia"],
     "asCap": 2.5,
+    "critBase": 1.75,  # base critical strike damage multiplier (verify in game)
     # ponytail: rough laner estimate, Riot publishes none; only drives a warning
     "typicalGoldByLevel": [500, 800, 1100, 1500, 1900, 2400, 3000, 3700, 4400,
                            5200, 6100, 7000, 8000, 9000, 10200, 11500, 13000, 15000],
