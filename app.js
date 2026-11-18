@@ -59,7 +59,7 @@ function createPanel(container, side, onChange) {
     champ: champs.slice().sort(byName)[side === 'you' ? 0 : 1].id, level: 1, stacks: 0, stacked: false,
     items: [null, null, null, null, null, null],
     runes: Engine.normalizeRunePage(DATA, {}),
-    currentHpPct: 100, priority: ['Q', 'W', 'E'], combo: Engine.DEFAULT_COMBO.map((s) => ({...s})),
+    currentHpPct: 100, priority: ['Q', 'W', 'E'], combo: Engine.DEFAULT_COMBO.map((s) => ({...s})), gold: 0,
   };
   let removedNotice = '';
 
@@ -76,6 +76,7 @@ function createPanel(container, side, onChange) {
     slots: [0, 1, 2, 3, 4, 5].map(() => el('select')),
     cost: el('div', {class: 'cost'}), notices: el('div'), stats: el('table'), note: el('p', {class: 'note'}),
     hp: el('input', {type: 'number', min: 1, max: 100, step: 1, id: side + '-hp'}),
+    gold: el('input', {type: 'number', min: 0, step: 1, id: side + '-gold'}),
     priority: el('select', {id: side + '-priority'}),
     comboList: el('ol', {class: 'combo-list'}), addStep: el('select', {id: side + '-addstep'}),
     addButton: el('button', {type: 'button'}), resetButton: el('button', {type: 'button'}),
@@ -101,7 +102,7 @@ function createPanel(container, side, onChange) {
     el('label', {class: 'check'}, ui.stacked, el('span', {'data-k': 'stacked'})));
   const right = el('div', {},
     el('h3', {'data-k': 'items'}), el('div', {class: 'inventory'}, ...ui.slots.map((s) => el('div', {class: 'slot'}, s))),
-    ui.cost, ui.notices,
+    ui.cost, ...(side === 'you' ? [label('gold', side + '-gold'), ui.gold] : []), ui.notices,
     el('h3', {'data-k': 'stats'}), ui.stats, ui.note);
   const comboBox = el('div', {class: 'full'}, el('h3', {'data-k': 'combo'}), ui.comboList,
     el('div', {class: 'row combo-add'}, ui.addStep, ui.addButton, ui.resetButton));
@@ -135,6 +136,7 @@ function createPanel(container, side, onChange) {
   ui.secondaryRunes.forEach((s, i) => s.addEventListener('change', runeChange(() => { state.runes.secondaryRunes[i] = num(s.value); })));
   ui.shards.forEach((s, i) => s.addEventListener('change', runeChange(() => { state.runes.shards[i] = num(s.value); })));
   ui.hp.addEventListener('change', () => { state.currentHpPct = Engine.clampPct(ui.hp.value); render(); });
+  ui.gold.addEventListener('change', () => { state.gold = Math.max(0, Math.round(Number(ui.gold.value)) || 0); render(); });
   ui.priority.addEventListener('change', () => { state.priority = ui.priority.value.split(''); render(); });
   ui.addButton.addEventListener('click', () => {
     state.combo.push(ui.addStep.value === 'A' ? {autos: 1} : {spell: ui.addStep.value});
@@ -209,6 +211,8 @@ function createPanel(container, side, onChange) {
     ui.labels['currentHp' + side + '-hp'].textContent = t('currentHp');
     ui.labels['skillOrder' + side + '-priority'].textContent = t('skillOrder');
     ui.hp.value = state.currentHpPct;
+    ui.gold.value = state.gold;
+    if (ui.labels['gold' + side + '-gold']) ui.labels['gold' + side + '-gold'].textContent = t('goldInPocket');
     fillSelect(ui.priority, PRIORITIES.map((p) => ({value: p, label: p.split('').join(' > ')})), state.priority.join(''));
 
     fillSelect(ui.champ, champs.slice().sort(byName).map((c) => ({value: c.id, label: nm(c.name)})), state.champ);
@@ -282,7 +286,8 @@ function createPanel(container, side, onChange) {
 
   render();
   return {getSelection: () => ({...state, items: state.items.slice(), combo: state.combo.map((s) => ({...s}))}),
-          setLang: render, results: ui.results};
+          setLang: render, results: ui.results,
+          setItems: (items, gold) => { state.items = items.slice(); if (gold !== undefined) state.gold = gold; removedNotice = ''; render(); }};
 }
 
 // One side's damage to the other: basic attack, each spell, and the combo.
@@ -348,7 +353,78 @@ function renderDamage(attackerPanel, targetPanel) {
     ...[...new Set(notes)].map((n) => el('p', {class: 'notice', text: n})));
 }
 
+// "What to buy": suggestions for your panel against the enemy panel, computed on click.
+function createAdvisor(section) {
+  let result = null, stale = false;
+  const ui = {
+    title: el('h2', {id: 'advisor-title'}), suggest: el('button', {type: 'button'}), sort: el('select', {id: 'advisor-sort'}),
+    perGold: el('input', {type: 'checkbox', id: 'advisor-pergold'}), sortLabel: el('label', {for: 'advisor-sort'}),
+    perGoldText: el('span'), baseline: el('p'), message: el('p', {class: 'notice'}), table: el('table', {class: 'damage'}),
+    notScoredTitle: el('h3'), notScoredIntro: el('p', {class: 'note'}), notScored: el('ul', {class: 'not-scored'}),
+  };
+  section.append(ui.title,
+    el('div', {class: 'row combo-add'}, ui.suggest, ui.sortLabel, ui.sort, el('label', {class: 'check'}, ui.perGold, ui.perGoldText)),
+    ui.baseline, ui.message, ui.table, ui.notScoredTitle, ui.notScoredIntro, ui.notScored);
+  const names = (ids) => ids.map((id) => nm(DATA.items[id].name)).join(' + ');
+  // "Kills at step 3." → "kills at step 3" (inside the baseline sentence).
+  const inline = (s) => s.replace(/\.$/, '').replace(/^./, (c) => c.toLowerCase());
+  const comboText = (hpLeft, killsAt, maxHp) => inline(killsAt ? t('killsAt', {n: killsAt})
+    : t('leaves', {hp: fmt(hpLeft, 0), pct: fmt(100 * hpLeft / maxHp)}));
+
+  function render() {
+    ui.title.textContent = t('advisor');
+    ui.suggest.textContent = t('suggest');
+    ui.sortLabel.textContent = t('sortBy');
+    ui.perGoldText.textContent = t('perGold');
+    const by = ui.sort.value || 'offense';
+    fillSelect(ui.sort, [{value: 'offense', label: t('sortOffense')}, {value: 'defense', label: t('sortDefense')}], by);
+    ui.message.textContent = '';
+    ui.table.replaceChildren();
+    ui.baseline.textContent = '';
+    ui.notScored.replaceChildren();
+    ui.notScoredTitle.textContent = '';
+    ui.notScoredIntro.textContent = '';
+    if (!result) return;
+    if (result.error) { ui.message.textContent = t(result.error === 'no_gold' ? 'enterGold' : 'nothingAffordable'); return; }
+    if (stale) ui.message.textContent = t('stale');
+    const you = panels[0].getSelection(), enemy = panels[1].getSelection();
+    const enemyHp = Engine.championStats(DATA, enemy).total.hp, yourHp = Engine.championStats(DATA, you).total.hp;
+    const b = result.baseline;
+    ui.baseline.textContent = t('baseline', {mine: comboText(b.hpLeft, b.killsAt, enemyHp), theirs: comboText(b.yourHpLeft, b.enemyKillsAt, yourHp)});
+    const head = el('thead', {}, el('tr', {}, ...['buy', 'costCol', 'damageGain', 'killStep', 'survivalGain', '', '']
+      .map((k) => el('th', {scope: 'col', text: k ? t(k) : ''}))));
+    const rows = Engine.rankBuys(result.rows, by, ui.perGold.checked).map((r) => {
+      const apply = el('button', {type: 'button', text: t('apply')});
+      apply.disabled = stale;
+      apply.addEventListener('click', () => panels[0].setItems(r.items, Math.max(0, you.gold - r.cost)));
+      const what = names(r.buys) + (r.consumed.length ? ` (${t('completes', {items: names(r.consumed)})})` : '');
+      return el('tr', {}, el('td', {text: what}), el('td', {text: fmt(r.cost, 0)}), el('td', {text: '+' + fmt(r.offense, 0)}),
+        el('td', {text: `${b.killsAt ?? '—'} → ${r.killsAt ?? '—'}`}), el('td', {text: '+' + fmt(r.defense, 0)}),
+        el('td', {text: r.flags.length ? t('partlyCounted') : ''}), el('td', {}, apply));
+    });
+    ui.table.replaceChildren(head, el('tbody', {}, ...rows));
+    if (result.notScored.length) {
+      ui.notScoredTitle.textContent = t('notScored');
+      ui.notScoredIntro.textContent = t('notScoredIntro');
+      ui.notScored.replaceChildren(...result.notScored.map((x) => el('li', {text:
+        `${nm(DATA.items[x.id].name)} (${fmt(x.cost, 0)} ${t('gold')})${nm(DATA.items[x.id].plaintext) ? ': ' + nm(DATA.items[x.id].plaintext) : ''}`})));
+    }
+  }
+  ui.suggest.addEventListener('click', () => {
+    const you = panels[0].getSelection();
+    result = Engine.adviseBuys(DATA, you, panels[1].getSelection(), you.gold);
+    stale = false;
+    render();
+  });
+  ui.sort.addEventListener('change', render);
+  ui.perGold.addEventListener('change', render);
+  render();
+  return {markStale: () => { if (result && !stale) { stale = true; render(); } }, setLang: render};
+}
+let advisor = null;
+
 function renderMatchup() {
+  if (advisor) advisor.markStale();
   if (panels.length < 2) return;
   renderDamage(panels[0], panels[1]);
   renderDamage(panels[1], panels[0]);
@@ -360,6 +436,7 @@ function renderPage() {
   document.querySelector('.patch').textContent = `${t('patch')} ${DATA.patch}`;
   document.getElementById('lang').textContent = t('switchLang');
   panels.forEach((p) => p.setLang());
+  if (advisor) advisor.setLang();
 }
 
 document.getElementById('lang').addEventListener('click', () => {
@@ -370,4 +447,5 @@ document.getElementById('lang').addEventListener('click', () => {
 const container = document.getElementById('panels');
 panels.push(createPanel(container, 'you', renderMatchup));
 panels.push(createPanel(container, 'enemy', renderMatchup));
+advisor = createAdvisor(document.getElementById('advisor'));
 renderPage();

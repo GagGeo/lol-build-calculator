@@ -38,6 +38,10 @@
   select { width: 100%; min-width: 0; }
 
   #panels { display: grid; gap: 16px; }
+  #advisor { margin-top: 16px; }
+  .not-scored { margin: 0; padding-left: 1.2em; color: var(--muted); }
+  #advisor table.damage td:nth-child(2), #advisor table.damage td:nth-child(3), #advisor table.damage td:nth-child(5) { white-space: nowrap; }
+  @media (max-width: 760px) { #advisor table.damage { display: block; overflow-x: auto; } }
   @media (min-width: 1100px) { #panels { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); } }
   .panel {
     background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 16px;
@@ -98,7 +102,10 @@
   <span class="patch"></span>
   <button type="button" id="lang"></button>
 </header>
-<main id="panels"></main>
+<main>
+  <div id="panels"></div>
+  <section id="advisor" class="panel" aria-labelledby="advisor-title"></section>
+</main>
 <footer data-t="disclaimer"></footer>
 <script src="data.js"></script>
 <script src="engine.js"></script>
