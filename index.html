@@ -37,6 +37,11 @@
   :focus-visible { outline: 2px solid var(--teal); outline-offset: 2px; }
   select { width: 100%; min-width: 0; }
 
+  .tabs { max-width: 1200px; margin: 0 auto 12px; padding: 0 16px; display: flex; gap: 8px; }
+  .tabs button { color: var(--muted); border-color: var(--line); }
+  .tabs button[aria-selected="true"] { color: var(--gold); border-color: var(--gold); font-weight: 600; }
+  .rank-form { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 0 14px; }
+  .rank-form input { width: 100%; }
   #panels { display: grid; gap: 16px; }
   #advisor { margin-top: 16px; }
   .not-scored { margin: 0; padding-left: 1.2em; color: var(--muted); }
@@ -102,9 +107,16 @@
   <span class="patch"></span>
   <button type="button" id="lang"></button>
 </header>
+<nav class="tabs" role="tablist" aria-label="LoL Build Calculator">
+  <button type="button" role="tab" id="tab-calculator" aria-controls="calculator"></button>
+  <button type="button" role="tab" id="tab-rankings" aria-controls="rankings"></button>
+</nav>
 <main>
-  <div id="panels"></div>
-  <section id="advisor" class="panel" aria-labelledby="advisor-title"></section>
+  <div id="calculator" role="tabpanel" aria-labelledby="tab-calculator">
+    <div id="panels"></div>
+    <section id="advisor" class="panel" aria-labelledby="advisor-title"></section>
+  </div>
+  <section id="rankings" class="panel" role="tabpanel" aria-labelledby="tab-rankings" hidden></section>
 </main>
 <footer data-t="disclaimer"></footer>
 <script src="data.js"></script>

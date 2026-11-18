@@ -357,13 +357,5 @@ Zyra E
 == CommunityDragon fallbacks ==
 (none)
 
-== Changes since 16.22.1 ==
-changed champion Annie
-changed champion Azir
-changed champion Bard
-changed champion Ezreal
-changed champion KSante
-changed champion Leblanc
-changed champion MasterYi
-changed champion Mel
-changed champion Vi
+== Changes (no previous patch) ==
+(none)

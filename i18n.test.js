@@ -41,3 +41,10 @@ test('the gold unit label is still the short unit (not overwritten by another la
   assert.equal(I18N.LABELS.fr.gold, 'po');
   assert.ok(I18N.LABELS.en.goldInPocket && I18N.LABELS.fr.goldInPocket);
 });
+test('stage 4 labels exist in both languages', () => {
+  for (const k of ['tabCalculator', 'tabRankings', 'rankStat', 'rankCount', 'rankLevel', 'rankMaxGold', 'rankMaxGoldHint',
+                   'rankStacks', 'rankButton', 'rankCol', 'valueCol', 'itemsCol', 'runesCol', 'openInCalculator', 'rankNote',
+                   'rankEmpty', 'rankTime', 'rankingsTitle']) {
+    assert.ok(I18N.LABELS.en[k] && I18N.LABELS.fr[k], k);
+  }
+});

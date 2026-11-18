@@ -287,7 +287,14 @@ function createPanel(container, side, onChange) {
   render();
   return {getSelection: () => ({...state, items: state.items.slice(), combo: state.combo.map((s) => ({...s}))}),
           setLang: render, results: ui.results,
-          setItems: (items, gold) => { state.items = items.slice(); if (gold !== undefined) state.gold = gold; removedNotice = ''; render(); }};
+          setItems: (items, gold) => { state.items = items.slice(); if (gold !== undefined) state.gold = gold; removedNotice = ''; render(); },
+          // Load a whole build (from the rankings); rows are already legal for their champion.
+          setBuild: (b) => {
+            Object.assign(state, {champ: b.champ, level: b.level, items: b.items.slice(), stacked: b.stacked, stacks: b.stacks,
+              runes: Engine.normalizeRunePage(DATA, JSON.parse(JSON.stringify(b.runes)))});
+            removedNotice = '';
+            render();
+          }};
 }
 
 // One side's damage to the other: basic attack, each spell, and the combo.
@@ -433,6 +440,100 @@ function createAdvisor(section) {
 }
 let advisor = null;
 
+// "Rankings" tab: the N champions + builds that reach the most of one stat.
+function createRankings(section) {
+  let result = null, opts = null;
+  const num = (attrs) => el('input', {type: 'number', step: 1, ...attrs});
+  const ui = {
+    title: el('h2', {id: 'rankings-title'}), stat: el('select', {id: 'rank-stat'}),
+    level: num({id: 'rank-level', min: 1, max: 18, value: 18}), count: num({id: 'rank-count', min: 1, max: 50, value: 10}),
+    gold: num({id: 'rank-gold', min: 0, placeholder: ''}), stacked: el('input', {type: 'checkbox', id: 'rank-stacked'}),
+    stacks: num({id: 'rank-stacks', min: 0, value: 0}), button: el('button', {type: 'button'}),
+    labels: {}, stackedText: el('span'), note: el('p', {class: 'note'}), time: el('p', {class: 'note'}),
+    table: el('table', {class: 'damage'}), notices: el('div'),
+  };
+  ui.stacked.checked = true;
+  const field = (key, input) => el('div', {}, (ui.labels[key] = el('label', {for: input.id})), input);
+  const wrap = el('div', {class: 'table-scroll'}, ui.table);
+  section.append(ui.title,
+    el('div', {class: 'rank-form'}, field('rankStat', ui.stat), field('rankLevel', ui.level), field('rankCount', ui.count),
+      field('rankMaxGold', ui.gold), field('rankStacks', ui.stacks)),
+    el('div', {class: 'row combo-add'}, el('label', {class: 'check'}, ui.stacked, ui.stackedText), ui.button),
+    ui.note, wrap, ui.time, ui.notices);
+
+  function render() {
+    ui.title.textContent = t('rankingsTitle');
+    for (const [k, node] of Object.entries(ui.labels)) node.textContent = t(k);
+    ui.gold.placeholder = t('rankMaxGoldHint');
+    ui.stackedText.textContent = t('stacked');
+    ui.button.textContent = t('rankButton');
+    fillSelect(ui.stat, Engine.RANKABLE_STATS.map((k) => ({value: k, label: t('stat_' + k)})), ui.stat.value || 'hp');
+    ui.table.replaceChildren();
+    ui.notices.replaceChildren();
+    ui.time.textContent = '';
+    ui.note.textContent = result ? t('rankNote') : t('rankEmpty');
+    if (!result) return;
+    const digits = opts.stat === 'as' ? 3 : 1;
+    const head = el('thead', {}, el('tr', {}, ...['rankCol', 'champion', 'valueCol', 'itemsCol', 'runesCol', '']
+      .map((k) => el('th', {scope: 'col', text: k ? t(k) : ''}))));
+    const notes = new Set();
+    const rows = result.rows.map((r) => {
+      const champ = DATA.champions[r.champ];
+      const open = el('button', {type: 'button', text: t('openInCalculator'),
+        'aria-label': `${t('openInCalculator')}: ${nm(champ.name)}`});
+      open.addEventListener('click', () => {
+        panels[0].setBuild({...r, stacked: opts.stacked, stacks: opts.stacks});
+        showTab('calculator');
+        window.scrollTo(0, 0);
+      });
+      for (const f of r.flags) {
+        const [, kind, id] = f.split(':');
+        notes.add(kind === 'champion' ? t('unknownChampion', {champ: nm(DATA.champions[id].name)})
+          : t('unknownPassive', {item: nm(DATA.items[id].name)}));
+      }
+      const runes = `${runeName(r.runes.keystone)}; ${r.runes.shards.map(shardLabel).join(', ')}`;
+      return el('tr', {}, el('td', {text: String(r.rank)}),
+        el('th', {scope: 'row', text: nm(champ.name)}),
+        el('td', {class: 'total', text: fmt(r.value, digits) + (r.flags.length ? ' *' : '')}),
+        el('td', {text: r.items.filter(Boolean).map((id) => nm(DATA.items[id].name)).join(', ') || t('none')}),
+        el('td', {text: runes}), el('td', {}, open));
+    });
+    ui.table.replaceChildren(head, el('tbody', {}, ...rows));
+    ui.time.textContent = t('rankTime', {s: fmt(result.ms / 1000, 1)});
+    ui.notices.replaceChildren(...[...notes].map((n) => el('p', {class: 'notice', text: `* ${n}`})));
+  }
+
+  ui.button.addEventListener('click', () => {
+    opts = {stat: ui.stat.value, level: Engine.clampLevel(ui.level.value),
+      count: Math.min(50, Math.max(1, Math.round(Number(ui.count.value)) || 10)),
+      maxGold: Number(ui.gold.value) > 0 ? Number(ui.gold.value) : null,
+      stacked: ui.stacked.checked, stacks: Math.max(0, Math.round(Number(ui.stacks.value)) || 0)};
+    ui.level.value = opts.level;
+    ui.count.value = opts.count;
+    ui.button.disabled = true;
+    // Let the browser paint the disabled button before the search blocks for a moment.
+    setTimeout(() => {
+      result = Engine.rankStat(DATA, opts);
+      ui.button.disabled = false;
+      render();
+    }, 20);
+  });
+  render();
+  return {setLang: render};
+}
+let rankings = null;
+
+// Two tabs: the calculator (panels + advisor) and the rankings. The choice is remembered.
+function showTab(name) {
+  for (const [tab, panel] of [['calculator', 'calculator'], ['rankings', 'rankings']]) {
+    const selected = tab === name;
+    document.getElementById('tab-' + tab).setAttribute('aria-selected', String(selected));
+    document.getElementById('tab-' + tab).tabIndex = selected ? 0 : -1;
+    document.getElementById(panel).hidden = !selected;
+  }
+  try { storage.setItem('tab', name); } catch { /* storage blocked: choice lasts for this visit */ }
+}
+
 function renderMatchup() {
   if (advisor) advisor.markStale();
   if (panels.length < 2) return;
@@ -447,6 +548,9 @@ function renderPage() {
   document.getElementById('lang').textContent = t('switchLang');
   panels.forEach((p) => p.setLang());
   if (advisor) advisor.setLang();
+  if (rankings) rankings.setLang();
+  document.getElementById('tab-calculator').textContent = t('tabCalculator');
+  document.getElementById('tab-rankings').textContent = t('tabRankings');
 }
 
 document.getElementById('lang').addEventListener('click', () => {
@@ -458,4 +562,17 @@ const container = document.getElementById('panels');
 panels.push(createPanel(container, 'you', renderMatchup));
 panels.push(createPanel(container, 'enemy', renderMatchup));
 advisor = createAdvisor(document.getElementById('advisor'));
+rankings = createRankings(document.getElementById('rankings'));
+for (const name of ['calculator', 'rankings']) {
+  const tab = document.getElementById('tab-' + name);
+  tab.addEventListener('click', () => showTab(name));
+  tab.addEventListener('keydown', (e) => {
+    if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') {
+      const other = name === 'calculator' ? 'rankings' : 'calculator';
+      showTab(other);
+      document.getElementById('tab-' + other).focus();
+    }
+  });
+}
+showTab((() => { try { return storage.getItem('tab') === 'rankings' ? 'rankings' : 'calculator'; } catch { return 'calculator'; } })());
 renderPage();
