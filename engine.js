@@ -228,8 +228,71 @@ const Engine = (() => {
     return cost > typical * data.rules.goldWarningFactor ? {cost, typical} : null;
   }
 
+  // --- Stage 2: spell formulas -------------------------------------------------------------------
+  // A stat as formulas read it: attack speed bonus and crit as fractions, crit damage as the total multiplier.
+  function formulaStat(stat, basis, stats, rules) {
+    const part = stats[basis] || {};
+    if (stat === 'as') return basis === 'bonus' ? (part.as || 0) / 100 : part.as || 0;
+    if (stat === 'crit') return (part.crit || 0) / 100;
+    if (stat === 'critDmg') {
+      const bonus = (stats.bonus.critDmg || 0) / 100;
+      return basis === 'bonus' ? bonus : basis === 'base' ? rules.critBase : rules.critBase + bonus;
+    }
+    return part[stat] || 0;
+  }
+
+  function evalCalc(spell, name, ctx, visiting = new Set()) {
+    const unsupported = [];
+    const calc = spell.calcs[name];
+    if (!calc) return {value: 0, unsupported: ['missing calc ' + name]};
+    if (visiting.has(name)) return {value: 0, unsupported: ['ref loop ' + name]};
+    visiting.add(name);
+    const node = (n) => {
+      switch (n.t) {
+        case 'v': {
+          const arr = spell.values[n.name];
+          return arr && arr.length ? arr[Math.min(ctx.rank, arr.length - 1)] : 0;
+        }
+        case 'n': return n.n;
+        case 'stat': return formulaStat(n.stat, n.basis, ctx.stats, ctx.rules) * node(n.coef);
+        case 'statOf': return formulaStat(n.stat, n.basis, ctx.stats, ctx.rules) * node(n.part);
+        case 'lvlBp': return n.start + n.bps.reduce((sum, [at, add, perLevel]) =>
+          sum + (ctx.level >= at ? add + (perLevel || 0) * (ctx.level - at + 1) : 0), 0);
+        case 'lvlLerp': return n.a + (n.b - n.a) * (ctx.level - 1) / 17;
+        case 'sum': return n.parts.reduce((s, p) => s + node(p), 0);
+        case 'prod': return node(n.a) * node(n.b);
+        case 'ref': {
+          const r = evalCalc(spell, n.name, ctx, visiting);
+          unsupported.push(...r.unsupported);
+          return r.value;
+        }
+        default: unsupported.push(n.what || 'unknown node'); return 0;
+      }
+    };
+    let value = calc.parts.reduce((s, p) => s + node(p), 0);
+    if (calc.mult) value *= node(calc.mult);
+    visiting.delete(name);
+    return {value, unsupported};
+  }
+
+  // Ranks at a level: Q/W/E at 1/2/3, R at 6/11/16, otherwise the first ability in `priority`
+  // below its max rank and below the basic-ability cap floor((level+1)/2).
+  function skillRanks(champ, level, priority = ['Q', 'W', 'E']) {
+    const max = Object.fromEntries(champ.spells.filter((s) => s.key !== 'P').map((s) => [s.key, s.maxrank]));
+    const ranks = {Q: 0, W: 0, E: 0, R: 0};
+    for (let l = 1; l <= clampLevel(level); l++) {
+      if ([6, 11, 16].includes(l) && ranks.R < max.R) { ranks.R++; continue; }
+      const early = l <= 3 ? ['Q', 'W', 'E'][l - 1] : null;
+      if (early && ranks[early] < max[early]) { ranks[early]++; continue; }
+      const cap = Math.floor((l + 1) / 2);
+      const k = priority.find((key) => ranks[key] < max[key] && ranks[key] < cap);
+      if (k) ranks[k]++;
+    }
+    return ranks;
+  }
+
   return {growth, clampLevel, championStats, ultRank, validateBuild, allowedItems, pruneBuild,
-          validateRunePage, normalizeRunePage, buildCost, goldWarning};
+          validateRunePage, normalizeRunePage, buildCost, goldWarning, evalCalc, skillRanks};
 })();
 
 if (typeof module === 'object') module.exports = Engine;

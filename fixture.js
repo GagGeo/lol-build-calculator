@@ -71,4 +71,32 @@ const D = {
 const VALID_PAGE = {primary: 100, keystone: 102, primaryRunes: [112, 122, 132], secondary: 200,
                     secondaryRunes: [212, 232], shards: [5008, 5010, 5011]};
 
-module.exports = {D, VALID_PAGE};
+// Stage 2: spells in the normalized shape produced by prep.py.
+const spell = (key, extra = {}) => ({key, id: 'S' + key, name: {en: key, fr: key}, maxrank: key === 'R' ? 3 : key === 'P' ? 1 : 5,
+  values: {}, calcs: {}, lines: [], flags: [], ...extra});
+const QSPELL = spell('Q', {
+  values: {BaseDamage: [35, 80, 125, 170, 215, 260, 305], APRatio: [0.8, 0.8, 0.8, 0.8, 0.8, 0.8, 0.8]},
+  calcs: {TotalDamage: {parts: [{t: 'v', name: 'BaseDamage'},
+    {t: 'stat', stat: 'ap', basis: 'total', coef: {t: 'v', name: 'APRatio'}}], pct: false, mult: null, flags: []}},
+  lines: [{type: 'magic', terms: [{calc: 'TotalDamage', kind: 'flat'}]}],
+});
+const MIXSPELL = spell('W', {
+  values: {Ratio: [0, 0.5, 0.5, 0.5, 0.5, 0.5]},
+  calcs: {
+    Bonus: {parts: [{t: 'stat', stat: 'ad', basis: 'bonus', coef: {t: 'n', n: 1.5}}], pct: false, mult: null, flags: []},
+    Crit: {parts: [{t: 'stat', stat: 'critDmg', basis: 'total', coef: {t: 'n', n: 1}}], pct: false, mult: null, flags: []},
+    Steps: {parts: [{t: 'lvlBp', start: 10, bps: [[7, 5], [13, 5]]}], pct: false, mult: null, flags: []},
+    PerLevel: {parts: [{t: 'lvlBp', start: 0, bps: [[2, 0, 3]]}], pct: false, mult: null, flags: []},
+    Lerp: {parts: [{t: 'lvlLerp', a: 40, b: 210}], pct: false, mult: null, flags: []},
+    Combined: {parts: [{t: 'sum', parts: [{t: 'n', n: 1}, {t: 'prod', a: {t: 'v', name: 'Ratio'}, b: {t: 'ref', name: 'Lerp'}}]}],
+               pct: false, mult: {t: 'n', n: 2}, flags: []},
+    MaxHp: {parts: [{t: 'statOf', stat: 'hp', basis: 'bonus', part: {t: 'n', n: 0.1}}], pct: false, mult: null, flags: []},
+    Loop: {parts: [{t: 'ref', name: 'Loop'}], pct: false, mult: null, flags: []},
+    Bad: {parts: [{t: 'x', what: 'BuffCounterByCoefficientCalculationPart'}], pct: false, mult: null, flags: []},
+  },
+});
+const champWithSpells = (ranks) => ({spells: ['P', 'Q', 'W', 'E', 'R'].map((k) => spell(k, ranks[k] !== undefined ? {maxrank: ranks[k]} : {}))});
+const STD = champWithSpells({});
+const UDYR_LIKE = champWithSpells({Q: 6, W: 6, E: 6, R: 6});
+
+module.exports = {D, VALID_PAGE, QSPELL, MIXSPELL, STD, UDYR_LIKE, spell};

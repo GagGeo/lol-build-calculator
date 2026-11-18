@@ -129,3 +129,34 @@ test('base health regen percent multiplies base regen', () => {
   near(s.total.hpregen, 10);
 });
 test('crit chance is capped at 100', () => near(stats({items: ['critI', 'critI']}).total.crit, 100));
+
+// Stage 2, Task 3: formulas and skill ranks.
+const {QSPELL, MIXSPELL, STD, UDYR_LIKE} = require('./fixture.js');
+const ctx = (o = {}) => ({rank: o.rank ?? 1, level: o.level ?? 1, rules: {...D.rules, critBase: 1.75},
+  stats: {base: {ad: 60, hp: 600}, bonus: {ad: o.bonusAd || 0, critDmg: o.critDmg || 0, hp: o.bonusHp || 0},
+          total: {ad: 60 + (o.bonusAd || 0), ap: o.ap || 0, hp: 600 + (o.bonusHp || 0)}}});
+const calc = (spellObj, name, o) => Engine.evalCalc(spellObj, name, ctx(o));
+test('annie q rank 1 no ap', () => near(calc(QSPELL, 'TotalDamage', {rank: 1}).value, 80));
+test('annie q rank 1 with 100 ap', () => near(calc(QSPELL, 'TotalDamage', {rank: 1, ap: 100}).value, 160));
+test('bonus ad basis', () => near(calc(MIXSPELL, 'Bonus', {bonusAd: 40}).value, 60));
+test('crit damage reads total multiplier', () => near(calc(MIXSPELL, 'Crit', {critDmg: 40}).value, 2.15));
+test('level breakpoints', () => { near(calc(MIXSPELL, 'Steps', {level: 6}).value, 10); near(calc(MIXSPELL, 'Steps', {level: 13}).value, 20); });
+test('per level breakpoint counts from that level', () => { near(calc(MIXSPELL, 'PerLevel', {level: 1}).value, 0); near(calc(MIXSPELL, 'PerLevel', {level: 4}).value, 9); });
+test('level interpolation', () => { near(calc(MIXSPELL, 'Lerp', {level: 1}).value, 40); near(calc(MIXSPELL, 'Lerp', {level: 18}).value, 210); });
+test('ref, sum, product, mult', () => near(calc(MIXSPELL, 'Combined', {rank: 1, level: 18}).value, (1 + 0.5 * 210) * 2));
+test('stat of subpart', () => near(calc(MIXSPELL, 'MaxHp', {bonusHp: 500}).value, 50));
+test('unsupported node reported', () => assert.deepEqual(calc(MIXSPELL, 'Bad').unsupported, ['BuffCounterByCoefficientCalculationPart']));
+test('ref loop is unsupported, not a crash', () => assert.ok(calc(MIXSPELL, 'Loop').unsupported.length > 0));
+test('missing calc is unsupported', () => assert.deepEqual(calc(MIXSPELL, 'Nope').unsupported, ['missing calc Nope']));
+test('default ranks level 1/6/18', () => {
+  assert.deepEqual(Engine.skillRanks(STD, 1), {Q: 1, W: 0, E: 0, R: 0});
+  assert.deepEqual(Engine.skillRanks(STD, 6), {Q: 3, W: 1, E: 1, R: 1});
+  assert.deepEqual(Engine.skillRanks(STD, 18), {Q: 5, W: 5, E: 5, R: 3});
+});
+test('priority E first', () => assert.equal(Engine.skillRanks(STD, 9, ['E', 'Q', 'W']).E, 5));
+test('basic rank cap by level', () => assert.ok(Engine.skillRanks(STD, 4).Q <= 2));
+test('custom ranks follow maxrank', () => {
+  const r = Engine.skillRanks(UDYR_LIKE, 18);
+  assert.ok(r.Q <= 6 && r.R <= 6);
+  assert.equal(r.Q + r.W + r.E + r.R, 18);
+});
