@@ -273,3 +273,31 @@ test('shred lowers resist for later steps only', () =>
 test('adaptive proc picks physical for AD champion', () =>
   near(combo({items: ['ls'], runes: keystonePage(102), armor: 100}, [{autos: 1}]).rows[0].damage, 70 * 100 / 200 + 50));
 test('unknown item damage effect is flagged', () => assert.ok(combo({items: ['eh']}).flags.includes('unknown_damage:item:eh')));
+
+// Stage 2, Task 6: effect options needed by the real rules.
+const D4 = {...D3, champions: {...D3.champions, Ranged: {...D3.champions.Annie, id: 'Ranged', base: {...D3.champions.Annie.base, range: 550}}},
+  items: {...D3.items, ...Object.fromEntries(['botrk', 'hob', 'mask', 'cutdown'].map((id) => [id, plainItem(id)]))},
+  rules: {...D3.rules, itemDamage: {...D3.rules.itemDamage,
+    botrk: [{kind: 'onHit', type: 'true', ratios: {targetCurrentHp: 0.09}, only: 'melee'},
+            {kind: 'onHit', type: 'true', ratios: {targetCurrentHp: 0.06}, only: 'ranged'}],
+    hob: [{kind: 'onHit', type: 'true', base: 10, limit: 3}],
+    mask: [{kind: 'amp', pct: 0.12, condition: 'always', applies: 'magic'}],
+    cutdown: [{kind: 'amp', pct: 0.08, condition: 'targetAbove:60', applies: 'all'}]}}};
+const combo4 = (o = {}, steps) => {
+  const sel = {champ: o.champ || 'Annie', level: 1, items: o.items || [], runes: null, stacked: false, stacks: 0};
+  return Engine.runCombo(D4, {...sel, priority: ['Q', 'W', 'E'], stats: Engine.championStats(D4, sel)},
+    {champ: 'Testo', stats: {base: {}, bonus: {}, total: {hp: 1000, armor: 0, mr: 0}}, currentHpPct: o.currentHpPct ?? 100}, steps);
+};
+test('melee and ranged effect values', () => {
+  near(combo4({items: ['botrk']}, [{autos: 1}]).rows[0].damage, 60 + 90);
+  near(combo4({champ: 'Ranged', items: ['botrk']}, [{autos: 1}]).rows[0].damage, 60 + 60);
+});
+test('on-hit limit', () => near(combo4({items: ['hob']}, [{autos: 5}]).hpLeft, 1000 - 300 - 30));
+test('amp applies to magic only', () => {
+  near(combo4({items: ['mask']}, [{spell: 'Q'}]).rows[0].damage, 80 * 1.12);
+  near(combo4({items: ['mask']}, [{autos: 1}]).rows[0].damage, 60);
+});
+test('amp targetAbove', () => {
+  near(combo4({items: ['cutdown']}, [{autos: 1}]).rows[0].damage, 60 * 1.08);
+  near(combo4({items: ['cutdown'], currentHpPct: 50}, [{autos: 1}]).rows[0].damage, 60);
+});

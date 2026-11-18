@@ -371,8 +371,11 @@ const Engine = (() => {
       for (const e of (rules.runeDamage || {})[id] || []) effects.push({...e, source: 'rune:' + id});
       if ((rules.runeDamageUnknown || []).includes(String(id))) flags.push('unknown_damage:rune:' + id);
     }
-    const of = (kind) => effects.filter((e) => e.kind === kind);
+    const melee = (champ.base.range || 0) < 300;
+    const of = (kind) => effects.filter((e) => e.kind === kind && (!e.only || (e.only === 'melee') === melee));
+    const effectUses = new Map();
 
+    let hpAtHit = hpStart; // target HP when the current hit started: on-hit effects land with the hit
     let hp = hpStart, hits = 0, autos = 0, spellbladeReady = false, afterSpellDone = false, killsAt = null;
     const shred = {armor: 0, mr: 0}, shredStacks = {}, procsDone = new Set();
     const rows = [], excluded = [];
@@ -382,8 +385,8 @@ const Engine = (() => {
       return ad > ap ? 'physical' : ad < ap ? 'magic' : champ.adaptiveAP ? 'magic' : 'physical';
     };
     const ratioSource = {ad: () => a.total.ad, bonusAd: () => a.bonus.ad, baseAd: () => a.base.ad, ap: () => a.total.ap,
-      hp: () => a.total.hp, bonusHp: () => a.bonus.hp, targetMaxHp: () => maxHp, targetCurrentHp: () => hp,
-      targetMissingHp: () => maxHp - hp};
+      hp: () => a.total.hp, bonusHp: () => a.bonus.hp, targetMaxHp: () => maxHp, targetCurrentHp: () => hpAtHit,
+      targetMissingHp: () => maxHp - hpAtHit};
     const effectRaw = (e) => {
       const base = Array.isArray(e.base) ? e.base[0] + (e.base[1] - e.base[0]) * (level - 1) / 17 : e.base || 0;
       return base + Object.entries(e.ratios || {}).reduce((s, [k, v]) => s + v * ((ratioSource[k] || (() => 0))() || 0), 0);
@@ -395,10 +398,12 @@ const Engine = (() => {
         if (applies === 'spells' && source !== 'spell') continue;
         if (applies === 'autos' && source !== 'auto') continue;
         if (applies === 'magicTrue' && type !== 'magic' && type !== 'true') continue;
+        if (applies === 'magic' && type !== 'magic') continue;
         const [cond, arg] = (e.condition || 'always').split(':');
         let pct = 0;
         if (cond === 'always') pct = e.pct;
         else if (cond === 'targetBelow') pct = (hp / maxHp) * 100 < Number(arg) ? e.pct : 0;
+        else if (cond === 'targetAbove') pct = (hp / maxHp) * 100 > Number(arg) ? e.pct : 0;
         else if (cond === 'targetBonusHp') pct = e.pct * Math.min(1, (target.stats.bonus.hp || 0) / Number(arg));
         else if (cond === 'afterHits') pct = hits >= Number(arg) ? e.pct : 0;
         else if (cond === 'targetMoreMaxHp') {
@@ -440,6 +445,7 @@ const Engine = (() => {
       if (killsAt !== null) return;
       const notes = [];
       let damage = 0;
+      hpAtHit = hp;
       if (step.spell) {
         const r = spellDamage(data, attacker, {stats: target.stats, currentHp: hp}, step.spell, 0, shred);
         if (!r.learned) notes.push('not_learned');
@@ -463,9 +469,13 @@ const Engine = (() => {
         const chance = Math.min(100, a.total.crit || 0) / 100;
         for (let n = 0; n < count && hp > 0; n++) {
           autos++;
+          hpAtHit = hp;
           damage += deal((a.total.ad || 0) * (1 + chance * (mult - 1)), 'physical', 'auto').dmg;
           for (const e of of('onHit')) {
-            if (autos % (e.every || 1) === 0) damage += deal(effectRaw(e), e.type, 'auto').dmg;
+            const used = effectUses.get(e) || 0;
+            if (autos % (e.every || 1) !== 0 || (e.limit && used >= e.limit)) continue;
+            effectUses.set(e, used + 1);
+            damage += deal(effectRaw(e), e.type, 'auto').dmg;
           }
           if (spellbladeReady) {
             for (const e of of('spellblade')) { damage += deal(effectRaw(e), e.type, 'auto').dmg; notes.push('effect:' + e.source); }

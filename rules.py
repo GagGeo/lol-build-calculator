@@ -72,6 +72,80 @@ RULES = {
     ],
     # Champions whose own passive changes their stats in a way not counted yet (stage 2 reads passives).
     "championStatsUnknown": ["Jhin", "Cassiopeia", "Aphelios", "Pyke", "Ornn", "Kayle"],
+    # --- Stage 2: damage inside one combo ---------------------------------------------------------
+    # Effect kinds (engine.js runCombo): proc, onHit, spellblade, afterSpell, amp, shred. See the stage 2 plan.
+    # base: number or [level 1, level 18]; ratios are fractions of ad/bonusAd/baseAd/ap/hp/bonusHp/
+    # targetMaxHp/targetCurrentHp/targetMissingHp. Optional: only melee|ranged, onHit every/limit.
+    # In-combat ramps (Liandry's, Riftmaker, Haunting Guise) count from the 3rd hit (afterHits:3).
+    # Values from CommunityDragon mDataValues and Data Dragon rune text, 16.23.
+    "runeDamage": {
+        "8112": [{"kind": "proc", "hits": 3, "type": "adaptive", "base": [70, 240],          # Electrocute
+                  "ratios": {"bonusAd": 0.1, "ap": 0.05}}],
+        "8229": [{"kind": "afterSpell", "type": "adaptive", "base": [15, 100],              # Arcane Comet
+                  "ratios": {"bonusAd": 0.1, "ap": 0.05}}],
+        "8005": [{"kind": "onHit", "every": 3, "limit": 1, "type": "adaptive", "base": [40, 160]},  # Press the Attack
+                 {"kind": "amp", "pct": 0.08, "condition": "afterHits:3", "applies": "all"}],
+        "8014": [{"kind": "amp", "pct": 0.08, "condition": "targetBelow:40", "applies": "all"}],   # Coup de Grace
+        "8017": [{"kind": "amp", "pct": 0.08, "condition": "targetAbove:60", "applies": "all"}],   # Cut Down
+        "8369": [{"kind": "amp", "pct": 0.07, "condition": "always", "applies": "all"}],           # First Strike
+        "8237": [{"kind": "afterSpell", "type": "magic", "base": [20, 40]}],                       # Scorch
+        "8437": [{"kind": "onHit", "limit": 1, "type": "magic", "ratios": {"hp": 0.035}, "only": "melee"},  # Grasp
+                 {"kind": "onHit", "limit": 1, "type": "magic", "ratios": {"hp": 0.014}, "only": "ranged"}],
+        # Deathfire Touch: 4 s single-target burn, last second +75% → 4.75 x per-second values.
+        "8992": [{"kind": "afterSpell", "type": "magic", "base": [14.25, 57],
+                  "ratios": {"ap": 0.11875, "bonusAd": 0.3325}}],
+        "9923": [{"kind": "onHit", "limit": 3, "type": "true", "base": [2, 20],                # Hail of Blades
+                  "ratios": {"bonusAd": 0.12, "ap": 0.1}}],
+    },
+    # Damage-related text but no single-target damage inside one combo (healing, shields, mana, towers, CC).
+    "runeDamageNone": ["8009", "8010", "8139", "8233", "8299", "8351", "8360", "8401", "8444", "8446", "8465", "8473"],
+    # Real damage the effect kinds can't express (needs CC, dashes, a health threshold, stacks or distance).
+    "runeDamageUnknown": ["8008", "8126", "8128", "8143", "8224", "8439"],
+    "itemDamage": {
+        "1043": [{"kind": "onHit", "type": "physical", "base": 15}],                            # Recurve Bow
+        "3115": [{"kind": "onHit", "type": "magic", "base": 15, "ratios": {"ap": 0.15}}],       # Nashor's Tooth
+        "3124": [{"kind": "onHit", "type": "magic", "base": 30}],                               # Guinsoo's
+        "3153": [{"kind": "onHit", "type": "physical", "ratios": {"targetCurrentHp": 0.09}, "only": "melee"},  # BotRK
+                 {"kind": "onHit", "type": "physical", "ratios": {"targetCurrentHp": 0.06}, "only": "ranged"}],
+        "3748": [{"kind": "onHit", "type": "physical", "ratios": {"hp": 0.01}, "only": "melee"},          # Titanic
+                 {"kind": "onHit", "type": "physical", "ratios": {"hp": 0.005}, "only": "ranged"}],
+        "3084": [{"kind": "onHit", "limit": 1, "type": "physical", "base": 70, "ratios": {"hp": 0.06}}],  # Heartsteel
+        "3742": [{"kind": "onHit", "limit": 1, "type": "physical", "base": 40, "ratios": {"baseAd": 1.0}}],  # Dead Man's
+        "3057": [{"kind": "spellblade", "type": "physical", "ratios": {"baseAd": 1.0}}],         # Sheen
+        "3078": [{"kind": "spellblade", "type": "physical", "ratios": {"baseAd": 2.0}}],         # Trinity Force
+        "6662": [{"kind": "spellblade", "type": "physical", "ratios": {"baseAd": 1.5}}],         # Iceborn Gauntlet
+        "3100": [{"kind": "spellblade", "type": "magic", "ratios": {"baseAd": 0.75, "ap": 0.45}}],  # Lich Bane
+        "3508": [{"kind": "spellblade", "type": "physical", "ratios": {"baseAd": 1.25}}],        # Essence Reaver
+        # Luden's: 6 echoes on a single target = 1 full + 5 x 20% = 2x (75 + 5% AP).
+        "6655": [{"kind": "afterSpell", "type": "magic", "base": 150, "ratios": {"ap": 0.1}}],
+        "6653": [{"kind": "afterSpell", "type": "magic", "ratios": {"targetMaxHp": 0.06}},      # Liandry's 2%/s x 3 s
+                 {"kind": "amp", "pct": 0.06, "condition": "afterHits:3", "applies": "all"}],
+        "2503": [{"kind": "afterSpell", "type": "magic", "base": 60, "ratios": {"ap": 0.06}}],  # Blackfire 3 s
+        "2508": [{"kind": "afterSpell", "type": "magic", "base": 15}],                          # Fated Ashes
+        "3871": [{"kind": "afterSpell", "type": "magic", "base": 10,                            # Zaz'Zak's
+                  "ratios": {"ap": 0.15, "targetMaxHp": 0.03}}],
+        "4633": [{"kind": "amp", "pct": 0.08, "condition": "afterHits:3", "applies": "all"}],   # Riftmaker
+        "3147": [{"kind": "amp", "pct": 0.06, "condition": "afterHits:3", "applies": "all"}],   # Haunting Guise
+        "3168": [{"kind": "amp", "pct": 0.04, "condition": "always", "applies": "all"}],        # Immortal Path
+        "3036": [{"kind": "amp", "pct": 0.15, "condition": "targetBonusHp:1500", "applies": "all"}],  # Lord Dominik's
+        "4645": [{"kind": "amp", "pct": 0.2, "condition": "targetBelow:40", "applies": "magicTrue"}],  # Shadowflame
+        "8020": [{"kind": "amp", "pct": 0.12, "condition": "always", "applies": "magic"}],      # Abyssal Mask
+        "3071": [{"kind": "shred", "stat": "armor", "pctPerStack": 0.06, "maxStacks": 5, "on": "physical"}],  # Cleaver
+        "8010": [{"kind": "shred", "stat": "mr", "pctPerStack": 0.075, "maxStacks": 4, "on": "magic"}],  # Bloodletter's
+    },
+    # Damage-related text but nothing single-target inside one combo: defensive, healing, wounds,
+    # minion-only, splash/cleave, actives (not in the combo), allies, reflect when hit.
+    "itemDamageNone": [
+        "1054", "1056", "1120", "2051", "2501", "2504", "2517", "2522", "2525", "3004", "3026", "3033", "3047",
+        "3053", "3070", "3074", "3075", "3076", "3077", "3082", "3083", "3085", "3107", "3109", "3123", "3137",
+        "3143", "3146", "3152", "3155", "3156", "3165", "3171", "3173", "3174", "3179", "3504", "3803", "3869",
+        "3870", "3916", "4401", "4628", "4629", "6333", "6609", "6620", "6631", "6657", "6673", "6696", "6697",
+        "6698"],
+    # Real single-target damage with no published value or a trigger the effect kinds can't express
+    # (Energized attacks, damage thresholds, after-ultimate effects, distance, executes, auras).
+    "itemDamageUnknown": [
+        "2502", "2510", "2512", "2520", "2523", "3050", "3068", "3087", "3091", "3094", "3095", "3118", "3144",
+        "3145", "3161", "3181", "3302", "3877", "4646", "6660", "6664", "6672", "6676", "6699"],
     # Permanent stat per stack. Value forms: number per stack; {"per": n, "value": v} = v every n stacks;
     # {"byRRank": [r1, r2, r3]} = per stack, by ultimate rank (R at levels 6/11/16).
     # Values from CommunityDragon champion files, 16.23.

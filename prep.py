@@ -526,8 +526,13 @@ def main(argv):
     possible_passives = [line.split()[3] for line in item_report if line.startswith("possible stat passive:")]
     possible_runes = sorted(k for k, r in runes["byId"].items()
                             if POSSIBLE_RUNE_STAT.search(TAG.sub(" ", r["desc"]["en"])))
+    outside_stats = lambda html: TAG.sub(" ", re.sub(r"<stats>.*?</stats>", "", html, flags=re.S))
+    possible_item_damage = sorted(i for i, it in items.items() if re.search(r"damage", outside_stats(it["desc"]["en"]), re.I))
+    possible_rune_damage = sorted(k for k, r in runes["byId"].items() if re.search(r"damage", TAG.sub(" ", r["desc"]["en"]), re.I))
     data = {"patch": patch, "champions": champions, "items": items, "groups": groups, "runes": runes,
-            "rules": RULES, "review": {"possibleStatPassives": possible_passives, "possibleRuneStats": possible_runes}}
+            "rules": RULES, "review": {"possibleStatPassives": possible_passives, "possibleRuneStats": possible_runes,
+                                       "possibleItemDamage": possible_item_damage,
+                                       "possibleRuneDamage": possible_rune_damage}}
 
     out_dir = root / "data"
     out_dir.mkdir(exist_ok=True)
@@ -558,6 +563,10 @@ def main(argv):
         ("Spell coverage", [coverage]),
         ("Spells with unparsed damage text", unparsed),
         ("Unsupported formula parts (count)", [f"{n} {what}" for what, n in unsupported.most_common()]),
+        ("Possible item damage effects (review in rules.py)",
+         [f"{i} {items[i]['name']['en']}" for i in possible_item_damage]),
+        ("Possible rune damage effects (review in rules.py)",
+         [f"{k} {runes['byId'][k]['name']['en']}" for k in possible_rune_damage]),
         ("Missing CommunityDragon records", champ_report),
         ("CommunityDragon fallbacks", report),
         (f"Changes since {previous[-1].stem}" if previous else "Changes (no previous patch)", diff),
