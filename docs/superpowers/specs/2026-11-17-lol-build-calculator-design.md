@@ -250,7 +250,7 @@ Each stage is usable on its own and is built in this order.
 
 - `check.py` runs after `prep.py` and asserts a handful of known values. For
   example:
-  - Annie Q rank 1 with 0 AP = 35 magic damage,
+  - Annie Q rank 1 with 0 AP = 80 magic damage (game value lists are indexed by rank; index 0 is unused),
   - a level 18 champion's HP matches the growth formula,
   - a known item's ability haste is read from its description,
   - Kalista's Black Spear is unavailable to Annie.
