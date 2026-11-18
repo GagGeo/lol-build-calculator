@@ -48,3 +48,7 @@ test('stage 4 labels exist in both languages', () => {
     assert.ok(I18N.LABELS.en[k] && I18N.LABELS.fr[k], k);
   }
 });
+test('optional enemy labels exist in both languages', () => {
+  for (const k of ['addEnemy', 'removeEnemy', 'needEnemy', 'openAs']) assert.ok(I18N.LABELS.en[k] && I18N.LABELS.fr[k], k);
+  assert.ok(I18N.t('openAs', 'en', {who: 'Enemy'}).includes('Enemy'));
+});

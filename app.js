@@ -3,6 +3,8 @@ const DATA = window.DATA;
 // Some private windows throw on merely reading window.localStorage.
 const storage = (() => { try { return window.localStorage; } catch { return undefined; } })();
 let lang = I18N.loadLang(storage);
+// The enemy panel is optional (hidden by default); whether it's shown is remembered per browser.
+let enemyShown = (() => { try { return storage.getItem('enemy') === '1'; } catch { return false; } })();
 const panels = [];
 
 const t = (key, vars) => I18N.t(key, lang, vars);
@@ -106,8 +108,11 @@ function createPanel(container, side, onChange) {
     el('h3', {'data-k': 'stats'}), ui.stats, ui.note);
   const comboBox = el('div', {class: 'full'}, el('h3', {'data-k': 'combo'}), ui.comboList,
     el('div', {class: 'row combo-add'}, ui.addStep, ui.addButton, ui.resetButton));
-  container.append(el('section', {class: 'panel', 'aria-labelledby': side + '-title'},
-    ui.title, left, right, comboBox, ui.results));
+  const removeButton = el('button', {type: 'button', class: 'remove-enemy'});
+  removeButton.addEventListener('click', () => setEnemyShown(false));
+  const head = side === 'enemy' ? el('div', {class: 'panel-head full'}, ui.title, removeButton) : ui.title;
+  const section = el('section', {class: 'panel', 'aria-labelledby': side + '-title'}, head, left, right, comboBox, ui.results);
+  container.append(section);
   ui.title.id = side + '-title';
   ui.slots.forEach((s, i) => s.setAttribute('aria-label', `${t('items')} ${i + 1}`));
 
@@ -200,6 +205,7 @@ function createPanel(container, side, onChange) {
   function render() {
     const page = state.runes;
     ui.title.textContent = t(side);
+    removeButton.textContent = t('removeEnemy');
     container.querySelectorAll('[data-k]').forEach((n) => { n.textContent = t(n.dataset.k); });
     ui.labels['champion' + side + '-champ'].textContent = t('champion');
     ui.labels['level' + side + '-level'].textContent = t('level');
@@ -286,7 +292,7 @@ function createPanel(container, side, onChange) {
 
   render();
   return {getSelection: () => ({...state, items: state.items.slice(), combo: state.combo.map((s) => ({...s}))}),
-          setLang: render, results: ui.results,
+          setLang: render, results: ui.results, section,
           setItems: (items, gold) => { state.items = items.slice(); if (gold !== undefined) state.gold = gold; removedNotice = ''; render(); },
           // Load a whole build (from the rankings); rows are already legal for their champion.
           setBuild: (b) => {
@@ -395,6 +401,8 @@ function createAdvisor(section) {
     ui.notScored.replaceChildren();
     ui.notScoredTitle.textContent = '';
     ui.notScoredIntro.textContent = '';
+    ui.suggest.disabled = !enemyShown;
+    if (!enemyShown) { ui.message.textContent = t('needEnemy'); return; }
     if (!result) return;
     if (result.error) { ui.message.textContent = t(result.error === 'no_gold' ? 'enterGold' : 'nothingAffordable'); return; }
     if (stale) ui.message.textContent = t('stale');
@@ -480,12 +488,16 @@ function createRankings(section) {
     const notes = new Set();
     const rows = result.rows.map((r) => {
       const champ = DATA.champions[r.champ];
-      const open = el('button', {type: 'button', text: t('openInCalculator'),
-        'aria-label': `${t('openInCalculator')}: ${nm(champ.name)}`});
-      open.addEventListener('click', () => {
-        panels[0].setBuild({...r, stacked: opts.stacked, stacks: opts.stacks});
-        showTab('calculator');
-        window.scrollTo(0, 0);
+      const open = ['you', 'enemy'].map((who, idx) => {
+        const label = t('openAs', {who: t(who)});
+        const button = el('button', {type: 'button', text: label, 'aria-label': `${label}: ${nm(champ.name)}`});
+        button.addEventListener('click', () => {
+          if (who === 'enemy') setEnemyShown(true);
+          panels[idx].setBuild({...r, stacked: opts.stacked, stacks: opts.stacks});
+          showTab('calculator');
+          panels[idx].section.scrollIntoView();
+        });
+        return button;
       });
       for (const f of r.flags) {
         const [, kind, id] = f.split(':');
@@ -497,7 +509,7 @@ function createRankings(section) {
         el('th', {scope: 'row', text: nm(champ.name)}),
         el('td', {class: 'total', text: fmt(r.value, digits) + (r.flags.length ? ' *' : '')}),
         el('td', {text: r.items.filter(Boolean).map((id) => nm(DATA.items[id].name)).join(', ') || t('none')}),
-        el('td', {text: runes}), el('td', {}, open));
+        el('td', {text: runes}), el('td', {class: 'open-buttons'}, ...open));
     });
     ui.table.replaceChildren(head, el('tbody', {}, ...rows));
     ui.time.textContent = t('rankTime', {s: fmt(result.ms / 1000, 1)});
@@ -538,8 +550,20 @@ function showTab(name) {
 function renderMatchup() {
   if (advisor) advisor.markStale();
   if (panels.length < 2) return;
+  panels[0].results.hidden = !enemyShown;
+  if (!enemyShown) return;
   renderDamage(panels[0], panels[1]);
   renderDamage(panels[1], panels[0]);
+}
+
+function setEnemyShown(on) {
+  enemyShown = on;
+  panels[1].section.hidden = !on;
+  addEnemyButton.hidden = on;
+  container.classList.toggle('solo', !on);
+  try { storage.setItem('enemy', on ? '1' : '0'); } catch { /* storage blocked: choice lasts for this visit */ }
+  renderMatchup();
+  if (advisor) advisor.setLang();
 }
 
 function renderPage() {
@@ -552,6 +576,7 @@ function renderPage() {
   if (rankings) rankings.setLang();
   document.getElementById('tab-calculator').textContent = t('tabCalculator');
   document.getElementById('tab-rankings').textContent = t('tabRankings');
+  addEnemyButton.textContent = t('addEnemy');
 }
 
 document.getElementById('lang').addEventListener('click', () => {
@@ -560,9 +585,16 @@ document.getElementById('lang').addEventListener('click', () => {
   renderPage();
 });
 const container = document.getElementById('panels');
+const addEnemyButton = el('button', {type: 'button', class: 'add-enemy'});
+addEnemyButton.addEventListener('click', () => {
+  setEnemyShown(true);
+  panels[1].section.scrollIntoView();
+});
+container.after(addEnemyButton);
 panels.push(createPanel(container, 'you', renderMatchup));
 panels.push(createPanel(container, 'enemy', renderMatchup));
 advisor = createAdvisor(document.getElementById('advisor'));
+setEnemyShown(enemyShown);
 rankings = createRankings(document.getElementById('rankings'));
 for (const name of ['calculator', 'rankings']) {
   const tab = document.getElementById('tab-' + name);

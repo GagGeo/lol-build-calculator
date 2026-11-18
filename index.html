@@ -44,6 +44,13 @@
   .rank-form { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 0 14px; }
   .rank-form input { width: 100%; }
   #panels { display: grid; gap: 16px; }
+  /* Only your panel: one wide panel laid out in two columns, as in the original calculator. */
+  #panels.solo { grid-template-columns: minmax(0, 1fr); }
+  @media (min-width: 1100px) { #panels.solo .panel { grid-template-columns: minmax(0, 1fr) minmax(0, 1.1fr); } }
+  .add-enemy { margin-top: 12px; }
+  .panel-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+  .panel-head h2 { margin: 0; font-size: 22px; font-weight: 600; }
+  .open-buttons { display: flex; flex-wrap: wrap; gap: 6px; }
   #advisor { margin-top: 16px; }
   .not-scored { margin: 0; padding-left: 1.2em; color: var(--muted); }
   #advisor table.damage td:nth-child(2), #advisor table.damage td:nth-child(3), #advisor table.damage td:nth-child(5) { white-space: nowrap; }
