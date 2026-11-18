@@ -505,7 +505,36 @@ const Engine = (() => {
     return {rows, hpStart, hpLeft: Math.max(0, hp), killsAt, excluded, flags};
   }
 
-  return {growth, clampLevel, championStats, ultRank, validateBuild, allowedItems, pruneBuild,
+  // --- Stage 3: the shop ------------------------------------------------------------------------
+  // Buying an item uses owned components (recursively, each owned item once) and pays the rest.
+  function purchase(data, champ, items, itemId) {
+    const pool = new Map();
+    for (const id of items.filter(Boolean)) pool.set(id, (pool.get(id) || 0) + 1);
+    const consumed = [];
+    const remaining = (id) => {
+      const item = data.items[id];
+      if (!item) return null;
+      let cost = item.gold.base;
+      for (const c of item.from || []) {
+        if (pool.get(c)) { pool.set(c, pool.get(c) - 1); consumed.push(c); continue; }
+        const sub = remaining(c);
+        if (sub === null) return null;
+        cost += sub;
+      }
+      return cost;
+    };
+    const cost = remaining(itemId);
+    if (cost === null) return null;
+    const next = items.slice();
+    for (const c of consumed) next[next.indexOf(c)] = null;
+    const slot = next.indexOf(null);
+    if (slot === -1) return null;
+    next[slot] = itemId;
+    if (validateBuild(data, champ, next).length) return null;
+    return {items: next, cost, consumed};
+  }
+
+  return {purchase, growth, clampLevel, championStats, ultRank, validateBuild, allowedItems, pruneBuild,
           validateRunePage, normalizeRunePage, buildCost, goldWarning, evalCalc, skillRanks,
           mitigate, autoAttack, spellDamage, runCombo, DEFAULT_COMBO, clampPct};
 })();

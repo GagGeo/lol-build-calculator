@@ -355,3 +355,27 @@ test('a spell with no readable line but an unparsed description is unsupported, 
   const r = qDamage(scaleSpell([], {lines: [], flags: ['unparsed_tooltip']}));
   assert.ok(r.unsupported.length > 0); assert.notEqual(r.noDamage, true);
 });
+
+// Stage 3, Task 1: the shop's purchase rule.
+const recipe = (id, base, from = [], extra = {}) => ({...plainItem(id), gold: {base, total: base}, from, tier: null, ...extra});
+const R = {...D3, items: {...D3.items,
+  sword: recipe('sword', 350), pick: recipe('pick', 875),
+  dirk: recipe('dirk', 400, ['sword', 'sword']), blade: recipe('blade', 625, ['dirk', 'pick']),
+  quest: recipe('quest', 100, ['missing'])}};
+test('buy a component outright', () =>
+  assert.deepEqual(Engine.purchase(R, 'Testo', [null, null], 'sword'), {items: ['sword', null], cost: 350, consumed: []}));
+test('owned components reduce the price and free their slots', () =>
+  assert.deepEqual(Engine.purchase(R, 'Testo', ['sword', 'sword', null], 'dirk'),
+    {items: ['dirk', null, null], cost: 400, consumed: ['sword', 'sword']}));
+test('each owned item is used once (one of two swords owned)', () =>
+  assert.equal(Engine.purchase(R, 'Testo', ['sword', null], 'dirk').cost, 750));
+test('components of components count', () =>
+  assert.deepEqual(Engine.purchase(R, 'Testo', ['sword', 'pick', null], 'blade'),
+    {items: ['blade', null, null], cost: 625 + 400 + 350, consumed: ['sword', 'pick']}));
+test('full inventory: only a buy that frees a slot fits', () => {
+  const full = ['sword', 'sword', 'ls', 'ls', 'ls', 'ls'];
+  assert.equal(Engine.purchase(R, 'Testo', full, 'pick'), null);
+  assert.equal(Engine.purchase(R, 'Testo', full, 'dirk').cost, 400);
+});
+test('illegal result is null', () => assert.equal(Engine.purchase(R, 'Testo', ['boots', null], 'boots2'), null));
+test('recipe with an unknown component is null', () => assert.equal(Engine.purchase(R, 'Testo', [null], 'quest'), null));
