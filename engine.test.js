@@ -441,3 +441,11 @@ test('tier-3 boot upgrades (unlocked in game, not bought) are not suggested', ()
   const T7 = {...D6, items: {...D6.items, t3: {...shopItem('t3', {ms: 10}, 0), tier: 7}}};
   assert.ok(!Engine.adviseBuys(T7, YOU, FOE, 1000).rows.some((r) => r.buys.includes('t3')));
 });
+
+// Stage 3 final-review fixes: the search.
+const D7 = {...D6, items: {...D6.items, bigsword: {...shopItem('bigsword', {ad: 35}, 1000), gold: {base: 650, total: 1000}, from: ['ls']}}};
+const EMPTY = sel6('Annie', [null, null, null, null, null, null]);
+const inventories = (gold) => Engine.adviseBuys(D7, EMPTY, FOE, gold).rows.map((r) => r.items.filter(Boolean).sort().join(','));
+test('the same item twice is a candidate', () => assert.ok(inventories(700).includes('ls,ls')));
+test('an item plus a spare copy of its own component is a candidate', () => assert.ok(inventories(1350).includes('bigsword,ls')));
+test('three of the same is a candidate', () => assert.ok(inventories(1050).includes('ls,ls,ls')));

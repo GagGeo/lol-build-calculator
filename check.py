@@ -64,6 +64,8 @@ assert I["3071"]["gold"]["total"] == 3000
 assert "APMultiplier" in I["3089"]["groups"], I["3089"]["groups"]
 assert I["3006"]["boots"]
 assert "1036" in I and "2003" not in I
+no_note = [i for i in R.get("advisorNotScored", []) if i in I and not I[i]["plaintext"]["en"] and i not in R.get("advisorNotes", {})]
+assert not no_note, f"not-scored items without a note (add to advisorNotes): {no_note}"
 # Kalista's Black Spear (consumable) and Scarecrow Effigy (trinket) are not slot items, so they are left out.
 assert "3599" not in I and "3330" not in I
 assert "no_cdragon_record" not in C["MonkeyKing"]["flags"]

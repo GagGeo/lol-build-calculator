@@ -76,7 +76,7 @@ const I18N = (() => {
       stale: 'Vos choix ont changé depuis ces propositions. Relancez pour les mettre à jour.',
       enterGold: 'Indiquez l\'or que vous avez en poche pour obtenir des propositions.',
       nothingAffordable: 'Rien d\'achetable ne tient dans votre or et vos emplacements libres.',
-      partlyCounted: 'en partie compté', completes: 'utilise votre {items}',
+      partlyCounted: 'en partie compté', completes: 'à partir de : {items}',
       baseline: 'Actuellement : votre combo {mine} ; le sien {theirs}.',
       notScoredIntro: 'Ces objets valent surtout par leur bouclier, soin, stase ou aide aux alliés, que les scores ci-dessus ne mesurent pas :',
       checkInGame: 'à vérifier en jeu', comboLine: 'utilisé dans le combo',

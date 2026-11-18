@@ -178,6 +178,17 @@ RULES = {
         "6673",  # Immortal Shieldbow: low-health shield
         "6692",  # Eclipse: shield
     ],
+    # One-line notes for not-scored items whose Data Dragon short description is empty.
+    "advisorNotes": {
+        "2502": {"en": "Drains nearby enemies and heals you in long fights", "fr": "Draine les ennemis proches et vous soigne en combat prolongé"},
+        "2504": {"en": "Magic shield after a while without taking magic damage", "fr": "Bouclier magique après un moment sans dégâts magiques"},
+        "2525": {"en": "Extra health and healing when you drop low", "fr": "Vie supplémentaire et soins quand votre vie est basse"},
+        "6333": {"en": "Delays part of the damage you take; heals on takedowns", "fr": "Retarde une partie des dégâts subis ; soigne sur élimination"},
+        "6673": {"en": "Shield when you drop low", "fr": "Bouclier quand votre vie est basse"},
+        "6692": {"en": "Shield after two quick hits on a champion", "fr": "Bouclier après deux coups rapides sur un champion"},
+        "3870": {"en": "Your heals and shields on allies empower their next attack", "fr": "Vos soins et boucliers sur un allié renforcent sa prochaine attaque"},
+        "3876": {"en": "Slowing an enemy near allies heals and speeds you and an ally", "fr": "Ralentir un ennemi près d'alliés vous soigne et accélère avec un allié"},
+    },
     # Flagged items whose heal/shield text is a side note; their stats and damage are scored normally.
     "advisorScored": ["2501", "2510", "2522", "2526", "3036", "3083", "3084", "3119", "3153", "4633", "4645", "4646",
                       "6610", "6621", "6653", "6657", "6672", "6676", "6694", "6695", "6699"],

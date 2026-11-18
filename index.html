@@ -41,7 +41,7 @@
   #advisor { margin-top: 16px; }
   .not-scored { margin: 0; padding-left: 1.2em; color: var(--muted); }
   #advisor table.damage td:nth-child(2), #advisor table.damage td:nth-child(3), #advisor table.damage td:nth-child(5) { white-space: nowrap; }
-  @media (max-width: 760px) { #advisor table.damage { display: block; overflow-x: auto; } }
+  .table-scroll { overflow-x: auto; } /* wide advisor table scrolls inside itself on phones */
   @media (min-width: 1100px) { #panels { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); } }
   .panel {
     background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 16px;

@@ -355,16 +355,20 @@ function renderDamage(attackerPanel, targetPanel) {
 
 // "What to buy": suggestions for your panel against the enemy panel, computed on click.
 function createAdvisor(section) {
-  let result = null, stale = false;
+  let result = null, stale = false, snapshot = '';
+  // Out of date only when the choices really differ (a language switch re-renders but changes nothing).
+  const choices = () => JSON.stringify([panels[0].getSelection(), panels[1].getSelection()]);
   const ui = {
     title: el('h2', {id: 'advisor-title'}), suggest: el('button', {type: 'button'}), sort: el('select', {id: 'advisor-sort'}),
     perGold: el('input', {type: 'checkbox', id: 'advisor-pergold'}), sortLabel: el('label', {for: 'advisor-sort'}),
     perGoldText: el('span'), baseline: el('p'), message: el('p', {class: 'notice'}), table: el('table', {class: 'damage'}),
+    tableWrap: el('div', {class: 'table-scroll'}),
     notScoredTitle: el('h3'), notScoredIntro: el('p', {class: 'note'}), notScored: el('ul', {class: 'not-scored'}),
   };
+  ui.tableWrap.append(ui.table);
   section.append(ui.title,
     el('div', {class: 'row combo-add'}, ui.suggest, ui.sortLabel, ui.sort, el('label', {class: 'check'}, ui.perGold, ui.perGoldText)),
-    ui.baseline, ui.message, ui.table, ui.notScoredTitle, ui.notScoredIntro, ui.notScored);
+    ui.baseline, ui.message, ui.tableWrap, ui.notScoredTitle, ui.notScoredIntro, ui.notScored);
   const names = (ids) => ids.map((id) => nm(DATA.items[id].name)).join(' + ');
   // "Kills at step 3." → "kills at step 3" (inside the baseline sentence).
   const inline = (s) => s.replace(/\.$/, '').replace(/^./, (c) => c.toLowerCase());
@@ -394,10 +398,10 @@ function createAdvisor(section) {
     const head = el('thead', {}, el('tr', {}, ...['buy', 'costCol', 'damageGain', 'killStep', 'survivalGain', '', '']
       .map((k) => el('th', {scope: 'col', text: k ? t(k) : ''}))));
     const rows = Engine.rankBuys(result.rows, by, ui.perGold.checked).map((r) => {
-      const apply = el('button', {type: 'button', text: t('apply')});
+      const what = names(r.buys) + (r.consumed.length ? ` (${t('completes', {items: names(r.consumed)})})` : '');
+      const apply = el('button', {type: 'button', text: t('apply'), 'aria-label': `${t('apply')}: ${what}`});
       apply.disabled = stale;
       apply.addEventListener('click', () => panels[0].setItems(r.items, Math.max(0, you.gold - r.cost)));
-      const what = names(r.buys) + (r.consumed.length ? ` (${t('completes', {items: names(r.consumed)})})` : '');
       return el('tr', {}, el('td', {text: what}), el('td', {text: fmt(r.cost, 0)}), el('td', {text: '+' + fmt(r.offense, 0)}),
         el('td', {text: `${b.killsAt ?? '—'} → ${r.killsAt ?? '—'}`}), el('td', {text: '+' + fmt(r.defense, 0)}),
         el('td', {text: r.flags.length ? t('partlyCounted') : ''}), el('td', {}, apply));
@@ -406,20 +410,26 @@ function createAdvisor(section) {
     if (result.notScored.length) {
       ui.notScoredTitle.textContent = t('notScored');
       ui.notScoredIntro.textContent = t('notScoredIntro');
+      const note = (id) => nm(DATA.items[id].plaintext) || nm((DATA.rules.advisorNotes || {})[id] || {en: ''});
       ui.notScored.replaceChildren(...result.notScored.map((x) => el('li', {text:
-        `${nm(DATA.items[x.id].name)} (${fmt(x.cost, 0)} ${t('gold')})${nm(DATA.items[x.id].plaintext) ? ': ' + nm(DATA.items[x.id].plaintext) : ''}`})));
+        `${nm(DATA.items[x.id].name)} (${fmt(x.cost, 0)} ${t('gold')})${note(x.id) ? ': ' + note(x.id) : ''}`})));
     }
   }
   ui.suggest.addEventListener('click', () => {
     const you = panels[0].getSelection();
     result = Engine.adviseBuys(DATA, you, panels[1].getSelection(), you.gold);
+    snapshot = choices();
     stale = false;
     render();
   });
   ui.sort.addEventListener('change', render);
   ui.perGold.addEventListener('change', render);
   render();
-  return {markStale: () => { if (result && !stale) { stale = true; render(); } }, setLang: render};
+  return {markStale: () => {
+    if (!result) return;
+    const now = choices() !== snapshot;
+    if (now !== stale) { stale = now; render(); }
+  }, setLang: render};
 }
 let advisor = null;
 

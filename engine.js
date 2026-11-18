@@ -583,24 +583,26 @@ const Engine = (() => {
       const r = chain([id]);
       if (r) singles.push(add([id], r));
     }
+    // Pairs and triples allow the same item more than once (two Long Swords) and try every order:
+    // buying an item before its own component keeps the component as a spare.
+    const tryAll = (ids) => {
+      const orders = ids.length === 2 ? [ids, [ids[1], ids[0]]]
+        : [[0, 1, 2], [0, 2, 1], [1, 0, 2], [1, 2, 0], [2, 0, 1], [2, 1, 0]].map((o) => o.map((x) => ids[x]));
+      for (const order of orders) {
+        const r = chain(order);
+        if (r) add(order, r);
+      }
+    };
     const cheapest = Math.min(...singles.map((s) => s.cost));
     for (let i = 0; i < singles.length; i++) {
       if (singles[i].cost + cheapest > g) continue;
-      for (let j = i + 1; j < singles.length; j++) {
-        const a = singles[i].buys[0], b = singles[j].buys[0];
-        const r = chain([a, b]) ? [a, b] : chain([b, a]) ? [b, a] : null;
-        if (r) add(r, chain(r));
-      }
+      for (let j = i; j < singles.length; j++) tryAll([singles[i].buys[0], singles[j].buys[0]]);
     }
     const best = (key) => singles.slice().sort((x, y) => y[key] - x[key]).slice(0, tripleFrom).map((s) => s.buys[0]);
     const top = [...new Set([...best('offense'), ...best('defense')])];
     for (let i = 0; i < top.length; i++) {
-      for (let j = i + 1; j < top.length; j++) {
-        for (let k = j + 1; k < top.length; k++) {
-          const ids = [top[i], top[j], top[k]];
-          const r = chain(ids);
-          if (r) add(ids, r);
-        }
+      for (let j = i; j < top.length; j++) {
+        for (let k = j; k < top.length; k++) tryAll([top[i], top[j], top[k]]);
       }
     }
     const notScored = [...notScoredIds].filter((id) => data.items[id]).map((id) => ({id, r: chain([id])}))
