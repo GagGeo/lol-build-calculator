@@ -118,7 +118,106 @@ const Engine = (() => {
     return {base, bonus, total, flags};
   }
 
-  return {growth, clampLevel, championStats, ultRank};
+  const sameChamp = (a, b) => String(a).toLowerCase() === String(b).toLowerCase();
+
+  function validateBuild(data, champ, items) {
+    const owned = items.filter(Boolean);
+    const errors = [];
+    if (owned.length > 6) errors.push('too_many_items');
+    if (data.rules.noBoots.some((c) => sameChamp(c, champ)) && owned.some((id) => data.items[id].boots)) {
+      errors.push('no_boots_champion');
+    }
+    for (const id of new Set(owned)) {
+      const req = data.items[id].requiredChampion;
+      if (req && !sameChamp(req, champ)) errors.push('champion_only:' + id);
+    }
+    const counts = {};
+    for (const id of owned) for (const gid of data.items[id].groups) counts[gid] = (counts[gid] || 0) + 1;
+    for (const [gid, n] of Object.entries(counts)) {
+      if (data.groups[gid] !== undefined && n > data.groups[gid]) errors.push('group_limit:' + gid);
+    }
+    return errors;
+  }
+
+  function allowedItems(data, champ, items, slot) {
+    return Object.keys(data.items).filter((id) => {
+      const build = items.slice();
+      build[slot] = id;
+      return validateBuild(data, champ, build).length === 0;
+    });
+  }
+
+  function pruneBuild(data, champ, items) {
+    const kept = [], removed = [];
+    for (const id of items) {
+      if (id && validateBuild(data, champ, [...kept, id]).length) { kept.push(null); removed.push(id); }
+      else kept.push(id || null);
+    }
+    return {items: kept, removed};
+  }
+
+  const findTree = (data, id) => data.runes.trees.find((t) => t.id === id);
+  const isSet = (v) => v !== null && v !== undefined;
+
+  function validateRunePage(data, page) {
+    const errors = [];
+    const primary = isSet(page.primary) ? findTree(data, page.primary) : null;
+    if (isSet(page.primary) && !primary) errors.push('primary');
+    if (primary) {
+      if (isSet(page.keystone) && !primary.slots[0].includes(page.keystone)) errors.push('keystone');
+      (page.primaryRunes || []).forEach((r, i) => {
+        if (isSet(r) && !primary.slots[i + 1].includes(r)) errors.push('primary_row:' + i);
+      });
+    }
+    const secondary = isSet(page.secondary) ? findTree(data, page.secondary) : null;
+    if (isSet(page.secondary) && !secondary) errors.push('secondary');
+    if (secondary && primary && secondary.id === primary.id) errors.push('secondary_same_tree');
+    if (secondary) {
+      const rows = (page.secondaryRunes || []).filter(isSet).map((r) => secondary.slots.findIndex((s) => s.includes(r)));
+      if (rows.some((row) => row < 1)) errors.push('secondary_row');
+      else if (rows.length === 2 && rows[0] === rows[1]) errors.push('secondary_same_row');
+    }
+    (page.shards || []).forEach((s, i) => {
+      if (isSet(s) && !data.rules.shardRows[i].includes(s)) errors.push('shard:' + i);
+    });
+    return errors;
+  }
+
+  function normalizeRunePage(data, page) {
+    const p = {primary: page.primary ?? null, keystone: page.keystone ?? null,
+               primaryRunes: [0, 1, 2].map((i) => (page.primaryRunes || [])[i] ?? null),
+               secondary: page.secondary ?? null,
+               secondaryRunes: [0, 1].map((i) => (page.secondaryRunes || [])[i] ?? null),
+               shards: [0, 1, 2].map((i) => (page.shards || [])[i] ?? null)};
+    const primary = isSet(p.primary) ? findTree(data, p.primary) : null;
+    if (!primary) p.primary = null;
+    if (!primary || !primary.slots[0].includes(p.keystone)) p.keystone = null;
+    p.primaryRunes = p.primaryRunes.map((r, i) => (primary && primary.slots[i + 1].includes(r) ? r : null));
+    const secondary = isSet(p.secondary) ? findTree(data, p.secondary) : null;
+    if (!secondary || (primary && secondary.id === primary.id)) {
+      p.secondary = null;
+      p.secondaryRunes = [null, null];
+    } else {
+      const rowOf = (r) => secondary.slots.findIndex((s) => s.includes(r));
+      const first = rowOf(p.secondaryRunes[0]) >= 1 ? p.secondaryRunes[0] : null;
+      const second = rowOf(p.secondaryRunes[1]) >= 1 && (first === null || rowOf(p.secondaryRunes[1]) !== rowOf(first))
+        ? p.secondaryRunes[1] : null;
+      p.secondaryRunes = [first, second];
+    }
+    p.shards = p.shards.map((s, i) => (data.rules.shardRows[i].includes(s) ? s : null));
+    return p;
+  }
+
+  const buildCost = (data, items) => items.filter(Boolean).reduce((sum, id) => sum + data.items[id].gold.total, 0);
+
+  function goldWarning(data, level, items) {
+    const cost = buildCost(data, items);
+    const typical = data.rules.typicalGoldByLevel[clampLevel(level) - 1];
+    return cost > typical * data.rules.goldWarningFactor ? {cost, typical} : null;
+  }
+
+  return {growth, clampLevel, championStats, ultRank, validateBuild, allowedItems, pruneBuild,
+          validateRunePage, normalizeRunePage, buildCost, goldWarning};
 })();
 
 if (typeof module === 'object') module.exports = Engine;

@@ -62,3 +62,54 @@ test('jack of all trades counts item stats', () => {
                    runes: pageWith({secondaryRunes: [221, 232], shards: [5005, 5010, 5013]})});
   near(s.bonus.ah, 5); near(s.bonus.ad, 10 + 8 * 0.6);
 });
+
+// Legality and gold (Task 5).
+test('two boots', () => assert.deepEqual(Engine.validateBuild(D, 'Testo', ['boots', 'boots2']), ['group_limit:Boots']));
+test('seven items', () => assert.ok(Engine.validateBuild(D, 'Testo', Array(7).fill('ls')).includes('too_many_items')));
+test('six items with empty slots is fine', () => assert.deepEqual(Engine.validateBuild(D, 'Testo', ['ls', null, 'ls']), []));
+test('cassiopeia boots', () => assert.deepEqual(Engine.validateBuild(D, 'Cassiopeia', ['boots']), ['no_boots_champion']));
+test('champion-only, case-insensitive', () => {
+  assert.deepEqual(Engine.validateBuild(D, 'Fiddlesticks', ['effigy']), []);
+  assert.deepEqual(Engine.validateBuild(D, 'Testo', ['effigy']), ['champion_only:effigy']);
+});
+test('allowedItems keeps swap in same slot', () => {
+  assert.ok(!Engine.allowedItems(D, 'Testo', ['boots', null], 1).includes('boots2'));
+  assert.ok(Engine.allowedItems(D, 'Testo', ['boots', null], 0).includes('boots2'));
+  assert.ok(!Engine.allowedItems(D, 'Cassiopeia', [null], 0).includes('boots'));
+});
+test('pruneBuild on champion switch', () =>
+  assert.deepEqual(Engine.pruneBuild(D, 'Cassiopeia', ['ls', 'boots']), {items: ['ls', null], removed: ['boots']}));
+test('rune page valid', () => assert.deepEqual(Engine.validateRunePage(D, VALID_PAGE), []));
+test('incomplete rune page is not an error', () =>
+  assert.deepEqual(Engine.validateRunePage(D, {...VALID_PAGE, keystone: null, secondaryRunes: [212, null]}), []));
+test('keystone from the wrong row or tree', () => {
+  assert.ok(Engine.validateRunePage(D, {...VALID_PAGE, keystone: 112}).includes('keystone'));
+  assert.ok(Engine.validateRunePage(D, {...VALID_PAGE, keystone: 201}).includes('keystone'));
+});
+test('primary rune in the wrong row', () =>
+  assert.ok(Engine.validateRunePage(D, {...VALID_PAGE, primaryRunes: [122, 122, 132]}).includes('primary_row:0')));
+test('secondary same tree', () =>
+  assert.ok(Engine.validateRunePage(D, {...VALID_PAGE, secondary: VALID_PAGE.primary}).includes('secondary_same_tree')));
+test('secondary keystone not allowed', () =>
+  assert.ok(Engine.validateRunePage(D, {...VALID_PAGE, secondaryRunes: [201, 232]}).includes('secondary_row')));
+test('secondary same row', () =>
+  assert.ok(Engine.validateRunePage(D, {...VALID_PAGE, secondaryRunes: [211, 212]}).includes('secondary_same_row')));
+test('shard in the wrong row', () =>
+  assert.ok(Engine.validateRunePage(D, {...VALID_PAGE, shards: [5011, 5010, 5011]}).includes('shard:0')));
+test('normalize clears dependents', () => {
+  const p = Engine.normalizeRunePage(D, {...VALID_PAGE, primary: 200});
+  assert.equal(p.keystone, null);
+  assert.deepEqual(p.primaryRunes, [null, null, null]);
+  assert.equal(p.secondary, null);
+  assert.deepEqual(p.secondaryRunes, [null, null]);
+  assert.deepEqual(p.shards, VALID_PAGE.shards);
+});
+test('normalize keeps a valid page', () => assert.deepEqual(Engine.normalizeRunePage(D, VALID_PAGE), VALID_PAGE));
+test('normalize drops the second of two same-row secondary runes', () =>
+  assert.deepEqual(Engine.normalizeRunePage(D, {...VALID_PAGE, secondaryRunes: [211, 212]}).secondaryRunes, [211, null]));
+test('build cost', () => assert.equal(Engine.buildCost(D, ['ls', null, 'bf']), 1650));
+test('gold warning', () => {
+  assert.deepEqual(Engine.goldWarning(D, 1, ['bf']), {cost: 1300, typical: 500});
+  assert.equal(Engine.goldWarning(D, 18, ['bf']), null);
+  assert.equal(Engine.goldWarning(D, 1, []), null);
+});
