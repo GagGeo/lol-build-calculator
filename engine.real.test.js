@@ -37,3 +37,18 @@ test('every real damage rule uses a known effect kind', () => {
     for (const [id, effects] of Object.entries(list)) for (const e of effects) assert.ok(kinds.has(e.kind), id);
   }
 });
+
+test('advisor on real data: fast, within gold, legal, useful', () => {
+  const sel = (champ, items) => ({champ, level: 11, items, runes: null, stacked: false, stacks: 0, priority: ['Q', 'W', 'E'],
+    combo: Engine.DEFAULT_COMBO, currentHpPct: 100});
+  const t0 = Date.now();
+  const a = Engine.adviseBuys(D, sel('Garen', ['3047', '3071', null, null, null, null]), sel('Annie', ['3020', '3089', null, null, null, null]), 3000);
+  const ms = Date.now() - t0;
+  assert.ok(ms < 3000, `${ms} ms`);
+  assert.ok(a.rows.length > 0);
+  for (const r of a.rows) {
+    assert.ok(r.cost <= 3000);
+    assert.deepEqual(Engine.validateBuild(D, 'Garen', r.items), []);
+  }
+  assert.ok(Engine.rankBuys(a.rows, 'offense', false)[0].offense > 0);
+});

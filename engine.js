@@ -534,7 +534,89 @@ const Engine = (() => {
     return {items: next, cost, consumed};
   }
 
-  return {purchase, growth, clampLevel, championStats, ultRank, validateBuild, allowedItems, pruneBuild,
+  // Every affordable purchase (singles, all pairs, triples from the best singles), scored against the
+  // panels' current choices: offense = enemy HP your combo removes in addition; defense = your HP saved.
+  function adviseBuys(data, you, enemy, gold, opts = {}) {
+    const tripleFrom = opts.tripleFrom ?? 20;
+    const g = gold === '' || gold === null || gold === undefined ? NaN : Number(gold);
+    if (!Number.isFinite(g) || g <= 0) return {rows: [], notScored: [], baseline: null, error: 'no_gold'};
+    const rules = data.rules;
+    const enemyStats = championStats(data, enemy);
+    const score = (items) => {
+      const stats = championStats(data, {...you, items});
+      const mine = runCombo(data, {...you, items, stats}, {champ: enemy.champ, stats: enemyStats, currentHpPct: enemy.currentHpPct}, you.combo);
+      const theirs = runCombo(data, {...enemy, stats: enemyStats}, {champ: you.champ, stats, currentHpPct: you.currentHpPct}, enemy.combo);
+      return {hpLeft: mine.hpLeft, killsAt: mine.killsAt, yourHpLeft: theirs.hpLeft, enemyKillsAt: theirs.killsAt};
+    };
+    const baseline = score(you.items);
+    const notScoredIds = new Set(rules.advisorNotScored || []);
+    const partly = new Set([...(rules.itemDamageUnknown || []), ...(rules.itemStatPassivesUnknown || [])]);
+    const byInventory = new Map();
+    const add = (buys, result) => {
+      const key = result.items.filter(Boolean).sort().join(',');
+      const known = byInventory.get(key);
+      if (known && known.cost <= result.cost) return known;
+      const s = score(result.items);
+      const row = {buys, items: result.items, cost: result.cost, consumed: result.consumed,
+        offense: baseline.hpLeft - s.hpLeft, killsAt: s.killsAt,
+        defense: s.yourHpLeft - baseline.yourHpLeft, enemyKillsAt: s.enemyKillsAt,
+        flags: buys.filter((id) => partly.has(id)).map((id) => 'partly_counted:' + id)};
+      byInventory.set(key, row);
+      return row;
+    };
+    // Apply buys in order; null if one doesn't fit or the total goes over the gold.
+    const chain = (ids) => {
+      let items = you.items, cost = 0;
+      const consumed = [];
+      for (const id of ids) {
+        const p = purchase(data, you.champ, items, id);
+        if (!p || cost + p.cost > g) return null;
+        items = p.items; cost += p.cost; consumed.push(...p.consumed);
+      }
+      return {items, cost, consumed};
+    };
+
+    const singles = [];
+    for (const id of Object.keys(data.items)) {
+      // Tier-3 boot upgrades (tier 7) are unlocked by team objectives in game, not bought with gold.
+      if (notScoredIds.has(id) || data.items[id].tier === 7) continue;
+      const r = chain([id]);
+      if (r) singles.push(add([id], r));
+    }
+    const cheapest = Math.min(...singles.map((s) => s.cost));
+    for (let i = 0; i < singles.length; i++) {
+      if (singles[i].cost + cheapest > g) continue;
+      for (let j = i + 1; j < singles.length; j++) {
+        const a = singles[i].buys[0], b = singles[j].buys[0];
+        const r = chain([a, b]) ? [a, b] : chain([b, a]) ? [b, a] : null;
+        if (r) add(r, chain(r));
+      }
+    }
+    const best = (key) => singles.slice().sort((x, y) => y[key] - x[key]).slice(0, tripleFrom).map((s) => s.buys[0]);
+    const top = [...new Set([...best('offense'), ...best('defense')])];
+    for (let i = 0; i < top.length; i++) {
+      for (let j = i + 1; j < top.length; j++) {
+        for (let k = j + 1; k < top.length; k++) {
+          const ids = [top[i], top[j], top[k]];
+          const r = chain(ids);
+          if (r) add(ids, r);
+        }
+      }
+    }
+    const notScored = [...notScoredIds].filter((id) => data.items[id]).map((id) => ({id, r: chain([id])}))
+      .filter((x) => x.r).map((x) => ({id: x.id, cost: x.r.cost}));
+    const rows = [...byInventory.values()];
+    return {rows, notScored, baseline, error: rows.length || notScored.length ? null : 'nothing_affordable'};
+  }
+
+  function rankBuys(rows, by, perGold, top = 20) {
+    const value = (r) => r[by] * (perGold ? 100 / Math.max(r.cost, 1) : 1);
+    const killRank = (r) => (by === 'offense' ? (r.killsAt ?? Infinity) : -(r.enemyKillsAt ?? Infinity));
+    return rows.slice().sort((a, b) => value(b) - value(a) || killRank(a) - killRank(b) || a.cost - b.cost
+      || (a.buys || []).length - (b.buys || []).length).slice(0, top);
+  }
+
+  return {adviseBuys, rankBuys, purchase, growth, clampLevel, championStats, ultRank, validateBuild, allowedItems, pruneBuild,
           validateRunePage, normalizeRunePage, buildCost, goldWarning, evalCalc, skillRanks,
           mitigate, autoAttack, spellDamage, runCombo, DEFAULT_COMBO, clampPct};
 })();

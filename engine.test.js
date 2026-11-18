@@ -379,3 +379,65 @@ test('full inventory: only a buy that frees a slot fits', () => {
 });
 test('illegal result is null', () => assert.equal(Engine.purchase(R, 'Testo', ['boots', null], 'boots2'), null));
 test('recipe with an unknown component is null', () => assert.equal(Engine.purchase(R, 'Testo', [null], 'quest'), null));
+
+// Stage 3, Task 3: scoring and ranking purchases.
+const shopItem = (id, stats, total) => ({...plainItem(id), stats, gold: {base: total, total}});
+const D6 = {...D3,
+  champions: {...D3.champions, Foe: {...D3.champions.Annie, id: 'Foe'}},
+  items: {ls: shopItem('ls', {ad: 10}, 350), bf: shopItem('bf', {ad: 40}, 1300), ruby: shopItem('ruby', {hp: 150}, 400),
+          cap: shopItem('cap', {ap: 130}, 1000), shieldy: shopItem('shieldy', {hp: 100}, 1000), eh: shopItem('eh', {ad: 50}, 1000)},
+  rules: {...D3.rules, advisorNotScored: ['shieldy']}};
+const sel6 = (champ, items) => ({champ, level: 6, items, runes: null, stacked: false, stacks: 0, priority: ['Q', 'W', 'E'],
+  combo: Engine.DEFAULT_COMBO, currentHpPct: 100});
+const YOU = sel6('Annie', ['ls', null, null, null, null, null]);
+const FOE = sel6('Foe', [null, null, null, null, null, null]);
+const advise = (gold) => Engine.adviseBuys(D6, YOU, FOE, gold);
+const comboWith = (items) => Engine.runCombo(D6, {...YOU, items, stats: Engine.championStats(D6, {...YOU, items})},
+  {champ: 'Foe', stats: Engine.championStats(D6, FOE), currentHpPct: 100}, YOU.combo);
+test('no gold', () => { for (const g of [0, -5, '', 'x']) assert.equal(advise(g).error, 'no_gold'); });
+test('nothing affordable', () => assert.equal(advise(100).error, 'nothing_affordable'));
+test('single buys scored against the baseline', () => {
+  const a = advise(1300);
+  const r = a.rows.find((x) => x.buys.join() === 'bf');
+  near(r.offense, a.baseline.hpLeft - comboWith(['ls', 'bf', null, null, null, null]).hpLeft);
+  assert.equal(r.cost, 1300);
+  assert.ok(r.offense > 0);
+});
+test('defense item raises your hp left', () => assert.ok(advise(1000).rows.find((x) => x.buys.join() === 'ruby').defense > 0));
+test('pairs within gold, deduplicated by final inventory', () => {
+  const rows = advise(2000).rows;
+  assert.ok(rows.some((x) => x.buys.length === 2));
+  assert.ok(rows.every((x) => x.cost <= 2000));
+  assert.equal(new Set(rows.map((x) => x.items.filter(Boolean).sort().join())).size, rows.length);
+});
+test('triples are built', () => assert.ok(advise(5000).rows.some((x) => x.buys.length === 3)));
+test('not-scored items are listed, never ranked', () => {
+  const a = advise(3000);
+  assert.ok(a.notScored.some((x) => x.id === 'shieldy' && x.cost === 1000));
+  assert.ok(!a.rows.some((x) => x.buys.includes('shieldy')));
+});
+test('partly counted flag', () => assert.ok(advise(3000).rows.find((x) => x.buys.join() === 'eh').flags.includes('partly_counted:eh')));
+test('ranking ties: both kill → earlier kill step, then cheaper', () => {
+  const rows = [{offense: 0, killsAt: 3, cost: 500}, {offense: 0, killsAt: 2, cost: 900}, {offense: 0, killsAt: 2, cost: 400}];
+  assert.deepEqual(Engine.rankBuys(rows, 'offense', false).map((r) => r.cost), [400, 900, 500]);
+});
+test('defense ties: surviving (null) beats dying later beats dying earlier', () => {
+  const rows = [{defense: 0, enemyKillsAt: 2, cost: 1}, {defense: 0, enemyKillsAt: null, cost: 2}, {defense: 0, enemyKillsAt: 4, cost: 3}];
+  assert.deepEqual(Engine.rankBuys(rows, 'defense', false).map((r) => r.cost), [2, 3, 1]);
+});
+test('per 100 gold divides by cost and never by zero', () => {
+  const rows = [{offense: 100, killsAt: null, cost: 1000}, {offense: 30, killsAt: null, cost: 100}, {offense: 5, killsAt: null, cost: 0}];
+  assert.deepEqual(Engine.rankBuys(rows, 'offense', true).map((r) => r.cost), [0, 100, 1000]);
+});
+test('rankBuys keeps the top N', () =>
+  assert.equal(Engine.rankBuys(Array.from({length: 30}, (_, i) => ({offense: i, killsAt: null, cost: 1})), 'offense', false).length, 20));
+test('no NaN anywhere', () =>
+  assert.ok(advise(5000).rows.every((r) => Number.isFinite(r.offense) && Number.isFinite(r.defense) && Number.isFinite(r.cost))));
+test('ties at equal value and cost prefer fewer buys', () => {
+  const rows = [{offense: 5, killsAt: null, cost: 100, buys: ['a', 'b']}, {offense: 5, killsAt: null, cost: 100, buys: ['a']}];
+  assert.deepEqual(Engine.rankBuys(rows, 'offense', false).map((r) => r.buys.length), [1, 2]);
+});
+test('tier-3 boot upgrades (unlocked in game, not bought) are not suggested', () => {
+  const T7 = {...D6, items: {...D6.items, t3: {...shopItem('t3', {ms: 10}, 0), tier: 7}}};
+  assert.ok(!Engine.adviseBuys(T7, YOU, FOE, 1000).rows.some((r) => r.buys.includes('t3')));
+});
