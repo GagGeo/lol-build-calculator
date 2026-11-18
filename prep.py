@@ -156,6 +156,92 @@ def build_runes(rr_en, rr_fr):
     return {"trees": trees, "byId": by_id}
 
 
+# --- Spell formulas -------------------------------------------------------------------------------
+# Game stat codes in formulas (missing key = 0) and stat basis (0 total, 1 base, 2 bonus).
+STAT_CODES = {0: "ap", 1: "armor", 2: "ad", 4: "as", 6: "mr", 7: "ms", 8: "crit", 9: "critDmg", 12: "hp", 29: "lethality"}
+STAT_BASIS = {0: "total", 1: "base", 2: "bonus"}
+
+
+def _stat(part):
+    code = part.get("mStat", 0)
+    if code not in STAT_CODES:
+        return None, {"t": "x", "what": f"mStat {code}"}
+    return STAT_CODES[code], None
+
+
+def normalize_part(part):
+    """One formula part as a small tree node (see the stage 2 plan); unknown shapes become {'t': 'x'}."""
+    try:
+        return _normalize_part(part)
+    except KeyError as missing:
+        return {"t": "x", "what": f"{part.get('__type', '')} without {missing}"}
+
+
+def _normalize_part(part):
+    kind = part.get("__type", "")
+    if kind == "NamedDataValueCalculationPart":
+        return {"t": "v", "name": part["mDataValue"]}
+    if kind == "NumberCalculationPart":
+        return {"t": "n", "n": _num(part.get("mNumber", 0))}
+    if kind in ("StatByCoefficientCalculationPart", "StatByNamedDataValueCalculationPart"):
+        stat, bad = _stat(part)
+        if bad:
+            return bad
+        coef = ({"t": "v", "name": part["mDataValue"]} if kind == "StatByNamedDataValueCalculationPart"
+                else {"t": "n", "n": _num(part.get("mCoefficient", 0))})
+        return {"t": "stat", "stat": stat, "basis": STAT_BASIS.get(part.get("mStatFormula", 0), "total"), "coef": coef}
+    if kind == "StatBySubPartCalculationPart":
+        stat, bad = _stat(part)
+        if bad:
+            return bad
+        return {"t": "statOf", "stat": stat, "basis": STAT_BASIS.get(part.get("mStatFormula", 0), "total"),
+                "part": normalize_part(part["mSubpart"])}
+    if kind == "ByCharLevelBreakpointsCalculationPart":
+        bps = []
+        # Each breakpoint: [level, one-time bonus at that level, bonus per level at and after it].
+        known = {"mLevel", "mAdditionalBonusAtThisLevel", "mBonusPerLevelAtAndAfter", "__type"}
+        for bp in part.get("mBreakpoints", []):
+            if set(bp) - known:
+                return {"t": "x", "what": "Breakpoint " + ",".join(sorted(set(bp) - known))}
+            entry = [bp.get("mLevel", 1), _num(bp.get("mAdditionalBonusAtThisLevel", 0))]
+            if "mBonusPerLevelAtAndAfter" in bp:
+                entry.append(_num(bp["mBonusPerLevelAtAndAfter"]))
+            bps.append(entry)
+        return {"t": "lvlBp", "start": _num(part.get("mLevel1Value", 0)), "bps": bps}
+    if kind == "ByCharLevelInterpolationCalculationPart":
+        return {"t": "lvlLerp", "a": _num(part.get("mStartValue", 0)), "b": _num(part.get("mEndValue", 0))}
+    if kind == "SumOfSubPartsCalculationPart":
+        return {"t": "sum", "parts": [normalize_part(p) for p in part.get("mSubparts", [])]}
+    if kind == "ProductOfSubPartsCalculationPart":
+        return {"t": "prod", "a": normalize_part(part["mPart1"]), "b": normalize_part(part["mPart2"])}
+    if "mSpellCalculationKey" in part:
+        return {"t": "ref", "name": part["mSpellCalculationKey"]}
+    return {"t": "x", "what": kind}
+
+
+def normalize_calc(calc):
+    """A spell calculation as {parts, pct, mult, flags}."""
+    try:
+        return _normalize_calc(calc)
+    except KeyError as missing:
+        return {"parts": [{"t": "x", "what": f"{calc.get('__type', '')} without {missing}"}], "pct": False,
+                "mult": None, "flags": []}
+
+
+def _normalize_calc(calc):
+    kind = calc.get("__type", "")
+    if kind == "GameCalculationModified":
+        return {"parts": [{"t": "ref", "name": calc["mModifiedGameCalculation"]}], "pct": False,
+                "mult": normalize_part(calc["mMultiplier"]), "flags": []}
+    if kind == "GameCalculationConditional":
+        return {"parts": [{"t": "ref", "name": calc["mDefaultGameCalculation"]}], "pct": False, "mult": None,
+                "flags": ["conditional"]}
+    return {"parts": [normalize_part(p) for p in calc.get("mFormulaParts", [])],
+            "pct": bool(calc.get("mDisplayAsPercent")),
+            "mult": normalize_part(calc["mMultiplier"]) if "mMultiplier" in calc else None,
+            "flags": []}
+
+
 POSSIBLE_RUNE_STAT = re.compile(r"(Adaptive Force|Attack Speed|Ability Haste|Health|Armor|Magic Resist|Move Speed)")
 
 

@@ -1,6 +1,6 @@
 import unittest
 
-from prep import parse_item_stats, build_items, build_runes, build_champions, diff_patches
+from prep import parse_item_stats, build_items, build_runes, build_champions, diff_patches, normalize_calc
 
 CLEAVER = ("<mainText><stats><attention>45</attention> Attack Damage<br>"
            "<attention>400</attention> Health<br><attention>20</attention> Ability Haste"
@@ -185,6 +185,97 @@ class DiffRunes(unittest.TestCase):
         old = {"items": {}, "champions": {}, "runes": {"byId": {"8010": {"desc": {"en": "1.8-4"}}}}}
         new = {"items": {}, "champions": {}, "runes": {"byId": {"8010": {"desc": {"en": "2-4"}}}}}
         self.assertEqual(diff_patches(old, new), ["changed rune 8010"])
+
+
+
+def _calc(*parts, **extra):
+    return {"mFormulaParts": list(parts), "__type": "GameCalculation", **extra}
+
+
+class NormalizeCalc(unittest.TestCase):
+    def test_annie_q(self):
+        calc = _calc({"mDataValue": "BaseDamage", "__type": "NamedDataValueCalculationPart"},
+                     {"mDataValue": "APRatio", "__type": "StatByNamedDataValueCalculationPart"})
+        self.assertEqual(normalize_calc(calc), {"parts": [
+            {"t": "v", "name": "BaseDamage"},
+            {"t": "stat", "stat": "ap", "basis": "total", "coef": {"t": "v", "name": "APRatio"}}],
+            "pct": False, "mult": None, "flags": []})
+
+    def test_bonus_ad_coefficient(self):
+        part = {"mStat": 2, "mStatFormula": 2, "mCoefficient": 1.5, "__type": "StatByCoefficientCalculationPart"}
+        self.assertEqual(normalize_calc(_calc(part))["parts"],
+                         [{"t": "stat", "stat": "ad", "basis": "bonus", "coef": {"t": "n", "n": 1.5}}])
+
+    def test_max_health_code_12(self):
+        part = {"mStat": 12, "mCoefficient": 0.1, "__type": "StatByCoefficientCalculationPart"}
+        self.assertEqual(normalize_calc(_calc(part))["parts"][0]["stat"], "hp")
+
+    def test_level_breakpoints(self):
+        part = {"mLevel1Value": 10.0, "mBreakpoints": [
+            {"mLevel": 7, "mAdditionalBonusAtThisLevel": 5.0, "__type": "Breakpoint"},
+            {"mLevel": 13, "mAdditionalBonusAtThisLevel": 5.0, "__type": "Breakpoint"}],
+            "__type": "ByCharLevelBreakpointsCalculationPart"}
+        self.assertEqual(normalize_calc(_calc(part))["parts"], [{"t": "lvlBp", "start": 10, "bps": [[7, 5], [13, 5]]}])
+
+    def test_breakpoint_bonus_per_level(self):
+        part = {"mLevel1Value": 10.0, "mBreakpoints": [{"mLevel": 2, "mBonusPerLevelAtAndAfter": 3.0, "__type": "Breakpoint"}],
+                "__type": "ByCharLevelBreakpointsCalculationPart"}
+        self.assertEqual(normalize_calc(_calc(part))["parts"], [{"t": "lvlBp", "start": 10, "bps": [[2, 0, 3]]}])
+
+    def test_breakpoint_with_unknown_key_is_unsupported(self):
+        part = {"mLevel1Value": 10.0, "mBreakpoints": [{"mLevel": 7, "{02deb550}": 1.0, "__type": "Breakpoint"}],
+                "__type": "ByCharLevelBreakpointsCalculationPart"}
+        self.assertEqual(normalize_calc(_calc(part))["parts"][0]["t"], "x")
+
+    def test_level_interpolation(self):
+        part = {"mStartValue": 40.0, "mEndValue": 210.0, "__type": "ByCharLevelInterpolationCalculationPart"}
+        self.assertEqual(normalize_calc(_calc(part))["parts"], [{"t": "lvlLerp", "a": 40, "b": 210}])
+
+    def test_sum_product_ref(self):
+        part = {"mSubparts": [{"mNumber": 1.0, "__type": "NumberCalculationPart"},
+                              {"mPart1": {"mDataValue": "Ratio", "__type": "NamedDataValueCalculationPart"},
+                               "mPart2": {"mSpellCalculationKey": "MaxHPDamage", "__type": "{f3cbe7b2}"},
+                               "__type": "ProductOfSubPartsCalculationPart"}],
+                "__type": "SumOfSubPartsCalculationPart"}
+        self.assertEqual(normalize_calc(_calc(part))["parts"], [{"t": "sum", "parts": [
+            {"t": "n", "n": 1}, {"t": "prod", "a": {"t": "v", "name": "Ratio"}, "b": {"t": "ref", "name": "MaxHPDamage"}}]}])
+
+    def test_stat_of_subpart(self):
+        part = {"mStat": 12, "mSubpart": {"mSpellCalculationKey": "Pct", "__type": "{f3cbe7b2}"},
+                "__type": "StatBySubPartCalculationPart"}
+        self.assertEqual(normalize_calc(_calc(part))["parts"],
+                         [{"t": "statOf", "stat": "hp", "basis": "total", "part": {"t": "ref", "name": "Pct"}}])
+
+    def test_modified_and_conditional(self):
+        mod = {"mMultiplier": {"mDataValue": "Mult", "__type": "NamedDataValueCalculationPart"},
+               "mModifiedGameCalculation": "Base", "__type": "GameCalculationModified"}
+        self.assertEqual(normalize_calc(mod), {"parts": [{"t": "ref", "name": "Base"}], "pct": False,
+                                               "mult": {"t": "v", "name": "Mult"}, "flags": []})
+        cond = {"mDefaultGameCalculation": "Plain", "mConditionalGameCalculation": "Empowered",
+                "__type": "GameCalculationConditional"}
+        self.assertEqual(normalize_calc(cond), {"parts": [{"t": "ref", "name": "Plain"}], "pct": False,
+                                                "mult": None, "flags": ["conditional"]})
+
+    def test_game_calculation_multiplier(self):
+        calc = _calc({"mNumber": 2.0, "__type": "NumberCalculationPart"},
+                     mMultiplier={"mNumber": 3.0, "__type": "NumberCalculationPart"})
+        self.assertEqual(normalize_calc(calc)["mult"], {"t": "n", "n": 3})
+
+    def test_unknown_part_and_stat_are_unsupported(self):
+        self.assertEqual(normalize_calc(_calc({"mBuffName": "x", "__type": "BuffCounterByCoefficientCalculationPart"}))["parts"],
+                         [{"t": "x", "what": "BuffCounterByCoefficientCalculationPart"}])
+        self.assertEqual(normalize_calc(_calc({"mStat": 15, "mCoefficient": 1.0, "__type": "StatByCoefficientCalculationPart"}))["parts"],
+                         [{"t": "x", "what": "mStat 15"}])
+
+    def test_missing_fields_are_unsupported_not_errors(self):
+        self.assertEqual(normalize_calc({"__type": "GameCalculationConditional"})["parts"][0]["t"], "x")
+        self.assertEqual(normalize_calc({"__type": "GameCalculationModified"})["parts"][0]["t"], "x")
+        self.assertEqual(normalize_calc(_calc({"__type": "NamedDataValueCalculationPart"}))["parts"][0]["t"], "x")
+        self.assertEqual(normalize_calc(_calc({"__type": "ProductOfSubPartsCalculationPart"}))["parts"][0]["t"], "x")
+
+    def test_percent_display(self):
+        calc = _calc({"mDataValue": "MaxHealthRatio", "__type": "NamedDataValueCalculationPart"}, mDisplayAsPercent=True)
+        self.assertTrue(normalize_calc(calc)["pct"])
 
 
 if __name__ == "__main__":
