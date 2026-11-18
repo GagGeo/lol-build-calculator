@@ -449,3 +449,62 @@ const inventories = (gold) => Engine.adviseBuys(D7, EMPTY, FOE, gold).rows.map((
 test('the same item twice is a candidate', () => assert.ok(inventories(700).includes('ls,ls')));
 test('an item plus a spare copy of its own component is a candidate', () => assert.ok(inventories(1350).includes('bigsword,ls')));
 test('three of the same is a candidate', () => assert.ok(inventories(1050).includes('ls,ls,ls')));
+
+// Stage 4, Task 1: beam search over items for one stat.
+const rItem = (id, stats, gold, extra = {}) => ({...plainItem(id), stats, gold: {base: gold, total: gold}, ...extra});
+const DR = {...D3,
+  champions: {
+    ...Object.fromEntries(Object.entries(D3.champions).map(([k, c]) => [k, {...c, resource: 'Energy'}])),
+    Tanky: {...D3.champions.Annie, id: 'Tanky', name: {en: 'Tanky', fr: 'Tanky'}, resource: 'Energy',
+            base: {...D3.champions.Annie.base, hp: 900, hpperlevel: 120}},
+    Manny: {...D3.champions.Annie, id: 'Manny', name: {en: 'Manny', fr: 'Manny'}, resource: 'Mana',
+            base: {...D3.champions.Annie.base, mp: 400, mpperlevel: 30}},
+  },
+  items: {
+    hp1: rItem('hp1', {hp: 400}, 900, {groups: ['U1']}), hp2: rItem('hp2', {hp: 300}, 600, {groups: ['U2']}),
+    hp3: rItem('hp3', {hp: 200}, 400, {groups: ['U3']}), ruby: rItem('ruby', {hp: 150}, 400),
+    boots: rItem('boots', {ms: 45}, 300, {groups: ['Boots'], boots: true}),
+    boots2: rItem('boots2', {ms: 60}, 1000, {groups: ['Boots'], boots: true}),
+    cap: rItem('cap', {ap: 130}, 3600, {groups: ['Cap']}), apc: rItem('apc', {ap: 60}, 400),
+    critI: rItem('critI', {crit: 60}, 1200), eh: rItem('eh', {ad: 50}, 1000, {groups: ['U4']}),
+    ls: rItem('ls', {ad: 10}, 350), bow: rItem('bow', {as: 25}, 900),
+  },
+  groups: {U1: 1, U2: 1, U3: 1, U4: 1, Boots: 1, Cap: 1},
+};
+// Every multiset of up to 6 items, legal and within gold: the true best value on the reference champion.
+function bruteBest(stat, maxGold = Infinity) {
+  const ids = Object.keys(DR.items);
+  let best = -Infinity;
+  const walk = (start, build, cost) => {
+    if (Engine.validateBuild(DR, 'Annie', build).length === 0 && cost <= maxGold) {
+      best = Math.max(best, Engine.championStats(DR, {champ: 'Annie', level: 18, items: build, runes: null, stacked: true, stacks: 0}).total[stat] || 0);
+    }
+    if (build.length === 6) return;
+    for (let i = start; i < ids.length; i++) walk(i, [...build, ids[i]], cost + DR.items[ids[i]].gold.total);
+  };
+  walk(0, [], 0);
+  return best;
+}
+test('beam finds the brute-force best health build', () => near(Engine.bestBuilds(DR, {stat: 'hp', level: 18})[0].value, bruteBest('hp')));
+test('beam finds the brute-force best with a gold limit', () =>
+  near(Engine.bestBuilds(DR, {stat: 'hp', level: 18, maxGold: 2000})[0].value, bruteBest('hp', 2000)));
+test('beam finds the brute-force best ability power (multiplier counted)', () => {
+  const top = Engine.bestBuilds(DR, {stat: 'ap', level: 18})[0];
+  near(top.value, bruteBest('ap')); assert.ok(top.items.includes('cap'));
+});
+test('builds are legal, padded to 6 slots, at most 6 items', () => {
+  for (const b of Engine.bestBuilds(DR, {stat: 'hp', level: 18})) {
+    assert.equal(b.items.length, 6);
+    assert.ok(b.items.filter(Boolean).length <= 6);
+    assert.deepEqual(Engine.validateBuild(DR, 'Annie', b.items), []);
+  }
+});
+test('repeatable items can repeat', () =>
+  assert.ok(Engine.bestBuilds(DR, {stat: 'hp', level: 18})[0].items.filter((i) => i === 'ruby').length >= 2));
+test('gold limit below every item gives the empty build', () =>
+  assert.deepEqual(Engine.bestBuilds(DR, {stat: 'hp', level: 18, maxGold: 100})[0].items.filter(Boolean), []));
+test('at most 60 builds, best first', () => {
+  const b = Engine.bestBuilds(DR, {stat: 'hp', level: 18});
+  assert.ok(b.length <= 60);
+  for (let i = 1; i < b.length; i++) assert.ok(b[i - 1].value >= b[i].value);
+});

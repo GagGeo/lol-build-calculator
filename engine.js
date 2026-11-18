@@ -618,7 +618,54 @@ const Engine = (() => {
       || (a.buys || []).length - (b.buys || []).length).slice(0, top);
   }
 
-  return {adviseBuys, rankBuys, purchase, growth, clampLevel, championStats, ultRank, validateBuild, allowedItems, pruneBuild,
+  // --- Stage 4: rankings ------------------------------------------------------------------------
+  const RANKABLE_STATS = ['hp', 'mp', 'ad', 'ap', 'armor', 'mr', 'as', 'ah', 'ms', 'crit', 'lethality', 'armorPenPct',
+    'magicPen', 'magicPenPct', 'lifesteal', 'omnivamp', 'hsp', 'tenacity', 'hpregen', 'mpregen'];
+  const padSix = (items) => [...items, null, null, null, null, null, null].slice(0, 6);
+
+  // Best item builds for one stat on a reference champion: a beam search scored by the real stat engine,
+  // so multipliers, conversions and caps count. Returns up to 60 builds, best first ("best found").
+  function bestBuilds(data, opts, refChamp) {
+    const ref = refChamp || (data.champions.Annie ? 'Annie' : Object.keys(data.champions)[0]);
+    const level = clampLevel(opts.level ?? 18);
+    const maxGold = opts.maxGold > 0 ? opts.maxGold : Infinity;
+    const value = (items) => championStats(data, {champ: ref, level, items, runes: null,
+      stacked: opts.stacked ?? true, stacks: 0}).total[opts.stat] || 0;
+    const base = value([]);
+    const all = Object.keys(data.items)
+      .filter((id) => data.items[id].tier !== 7 && data.items[id].gold.total <= maxGold
+        && validateBuild(data, ref, [id]).length === 0)
+      .map((id) => ({id, gain: value([id]) - base, cost: data.items[id].gold.total}))
+      .filter((c) => c.gain > 1e-9);
+    const byGain = all.slice().sort((a, b) => b.gain - a.gain).slice(0, 30);
+    const byGold = Number.isFinite(maxGold)
+      ? all.slice().sort((a, b) => b.gain / Math.max(b.cost, 1) - a.gain / Math.max(a.cost, 1)).slice(0, 15) : [];
+    const candidates = [...new Map([...byGain, ...byGold].map((c) => [c.id, c])).values()];
+
+    const seen = new Map([['', {items: [], cost: 0, value: base}]]);
+    let frontier = [seen.get('')];
+    for (let round = 0; round < 6; round++) {
+      const next = [];
+      for (const build of frontier) {
+        for (const c of candidates) {
+          const cost = build.cost + c.cost;
+          if (cost > maxGold) continue;
+          const items = [...build.items, c.id];
+          const key = items.slice().sort().join(',');
+          if (seen.has(key) || validateBuild(data, ref, items).length) continue;
+          const entry = {items, cost, value: value(items)};
+          seen.set(key, entry);
+          next.push(entry);
+        }
+      }
+      frontier = next.sort((a, b) => b.value - a.value).slice(0, 200);
+      if (!frontier.length) break;
+    }
+    return [...seen.values()].sort((a, b) => b.value - a.value).slice(0, 60)
+      .map((b) => ({items: padSix(b.items), value: b.value, cost: b.cost}));
+  }
+
+  return {RANKABLE_STATS, bestBuilds, adviseBuys, rankBuys, purchase, growth, clampLevel, championStats, ultRank, validateBuild, allowedItems, pruneBuild,
           validateRunePage, normalizeRunePage, buildCost, goldWarning, evalCalc, skillRanks,
           mitigate, autoAttack, spellDamage, runCombo, DEFAULT_COMBO, clampPct};
 })();
