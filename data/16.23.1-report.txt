@@ -89,6 +89,117 @@ possible stat passive: 6697 Hubris
 possible stat passive: 6699 Voltaic Cyclosword
 possible stat passive: 8010 Bloodletter's Curse
 
+== Possible champion stat passives (review in rules.py) ==
+Aatrox Deathbringer Stance
+Ahri Essence Theft
+Akali Assassin's Mark
+Akshan Dirty Fighting
+Alistar Triumphant Roar
+Ambessa Drakehound's Step
+Anivia Rebirth
+Aurora Spirit Abjuration
+Azir Shurima's Legacy
+Bard Traveler's Call
+Belveth Death in Lavender 
+Blitzcrank Mana Barrier
+Brand Blaze
+Briar Crimson Curse
+Cassiopeia Serpentine Grace
+Chogath Carnivore
+Corki Hextech Munitions
+Darius Hemorrhage
+Diana Moonsilver Blade
+DrMundo Goes Where He Pleases
+Ekko Z-Drive Resonance
+Elise Spider Queen
+Evelynn Demon Shade
+Ezreal Rising Spell Force
+Fiora Duelist's Dance
+Gangplank Trial by Fire
+Garen Perseverance
+Gnar Rage Gene
+Gragas Happy Hour
+Graves New Destiny
+Gwen A Thousand Cuts
+Hecarim Warpath
+Heimerdinger Hextech Affinity
+Illaoi Prophet of an Elder God
+Irelia Ionian Fervor
+Ivern Friend of the Forest
+Janna Tailwind
+Jax Relentless Assault
+Jayce Hextech Capacitor
+Jhin Whisper
+Jinx Get Excited!
+KSante Dauntless Instinct
+Kaisa Second Skin
+Kayle Divine Ascent
+Kindred Mark of the Kindred
+Kled Skaarl, the Cowardly Lizard
+KogMaw Icathian Surprise
+Leblanc Mirror Image
+LeeSin Flurry
+Lillia Dream-Laden Bough
+Locke Silver Stake
+Maokai Sap Magic
+Mel Searing Brilliance
+MonkeyKing Stone Skin
+Mordekaiser Darkness Rise
+Nami Surging Tides
+Nasus Soul Eater
+Nidalee Prowl
+Nocturne Umbra Blades
+Nunu Call of the Freljord
+Olaf Berserker Rage
+Pyke Gift of the Drowned Ones
+Rammus Spiked Shell
+RekSai Fury of the Xer'Sai
+Rell Break the Mold
+Renekton Reign of Anger
+Rengar Unseen Predator
+Rumble Junkyard Titan
+Ryze Arcane Mastery
+Samira Daredevil Impulse
+Sejuani Fury of the North
+Senna Absolution
+Seraphine Stage Presence
+Sett Pit Grit
+Shaco Backstab
+Shyvana Scalemail
+Singed Noxious Slipstream
+Sion Glory in Death
+Sivir Fleet of Foot
+Sona Power Chord
+Soraka Salvation
+Swain Ravenous Flock
+Sylas Petricite Burst
+Syndra Transcendent
+Taliyah Rock Surfing
+Taric Bravado
+Teemo Guerrilla Warfare
+Thresh Damnation
+Tristana Draw a Bead
+Trundle King's Tribute
+Tryndamere Battle Fury
+Udyr Bridge Between
+Varus Living Vengeance
+Vayne Night Hunter
+Veigar Phenomenal Evil Power
+Viego Sovereign's Domination
+Vladimir Crimson Pact
+Volibear The Relentless Storm
+Warwick Eternal Hunger
+Xerath Mana Surge
+XinZhao Determination
+Yasuo Way of the Wanderer
+Yone Way of the Hunter
+Yorick Shepherd of Souls
+Yunara Vow of the First Lands
+Zaahen Cultivation of War
+Zac Cell Division
+Zed Contempt for the Weak
+Zeri Living Battery
+
 == Possible rune stats (review in rules.py) ==
 8008 Lethal Tempo
 8010 Conqueror
@@ -114,9 +225,11 @@ possible stat passive: 8010 Bloodletter's Curse
 9923 Hail of Blades
 
 == Spell coverage ==
-spells with damage fully readable: 558/633 (88.2%)
+spells with damage fully readable: 554/642 (86.3%)
+spells with a self-heal read: 83, fully readable: 71
 
 == Spells with unparsed damage text ==
+Caitlyn P
 Elise P
 Elise W
 Fiora R
@@ -153,8 +266,9 @@ Zyra Q
 Zyra E
 
 == Unsupported formula parts (count) ==
-34 unparsed text
-9 ByCharLevelFormulaCalculationPart
+35 unparsed text
+14 missing value
+10 ByCharLevelFormulaCalculationPart
 8 BuffCounterByNamedDataValueCalculationPart
 7 percentage of another base
 7 EffectValueCalculationPart
@@ -351,8 +465,8 @@ Zyra E
 6695 Serpent's Fang
 6699 Voltaic Cyclosword
 
-== Missing CommunityDragon records ==
-(none)
+== Champion records (missing, or base stats corrected from game files) ==
+base adperlevel taken from game files for 172 champions (Data Dragon differs): Aatrox 0 -> 5, Ahri 0 -> 3, Akali 0 -> 3.3, Akshan 0 -> 3, Alistar 0 -> 3.75, Ambessa 0 -> 3, Amumu 0 -> 3.8, Anivia 0 -> 3.2 ...
 
 == CommunityDragon fallbacks ==
 (none)

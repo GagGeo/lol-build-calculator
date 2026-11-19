@@ -49,7 +49,8 @@ Every day, GitHub checks whether Riot released a new patch. When everything chec
 
 - The numbers come from Riot's game data, so they're as good as that data. Some spells and item effects can't be read reliably. The page marks them **check in game** and leaves them out of totals rather than guessing.
 - Multi-hit spells are marked **per hit**: the combo counts one hit.
-- The combo is a sequence of hits, not a fight simulation: no cooldowns, movement, shields or healing.
+- The combo is a sequence of hits, not a fight simulation: no cooldowns, movement or shields. Healing counts life steal (basic attacks and on-hit), omnivamp (all damage) and your champion's own spell and passive heals, boosted by Heal and Shield Power, up to your missing health. Grievous Wounds from the enemy's items cuts it by 40%. Heals from runes and items, heals that need something outside the combo (a kill, being out of combat, a revive) and heals for allies are not counted.
+- Champion passives: permanent stats (Tristana's range, Nasus's life steal, Pyke's health to AD…) are counted. A passive that deals damage is one step of the combo, counted once, whatever its trigger (marks, stacks, missing health). Temporary buffs (on kill, out of combat…) are not counted.
 
 ### For whoever maintains it
 
@@ -112,7 +113,8 @@ Chaque jour, GitHub vérifie si Riot a publié un nouveau patch. Quand tout est 
 
 - Les chiffres viennent des données de jeu de Riot ; ils sont aussi bons que ces données. Certains sorts et effets d'objets ne peuvent pas être lus de façon fiable. La page les marque **à vérifier en jeu** et les retire des totaux plutôt que de deviner.
 - Les sorts à plusieurs coups sont marqués **par coup** : le combo compte un seul coup.
-- Le combo est une suite de coups, pas une simulation de combat : pas de délais de récupération, de déplacements, de boucliers ni de soins.
+- Le combo est une suite de coups, pas une simulation de combat : pas de délais de récupération, de déplacements ni de boucliers. Les soins comptent le vol de vie (attaques de base et effets à l'impact), l'omnivampirisme (tous les dégâts) et les soins des sorts et du passif de votre champion, augmentés par la puissance des soins et boucliers, dans la limite de votre vie manquante. Les Blessures graves des objets adverses les réduisent de 40 %. Les soins des runes et objets, ceux qui demandent autre chose que le combo (une élimination, être hors combat, une résurrection) et les soins pour les alliés ne sont pas comptés.
+- Passifs des champions : les stats permanentes (portée de Tristana, vol de vie de Nasus, vie convertie en AD de Pyke…) sont comptées. Un passif qui inflige des dégâts est une étape du combo, comptée une fois, quel que soit son déclencheur (marques, cumuls, vie manquante). Les bonus temporaires (sur élimination, hors combat…) ne sont pas comptés.
 
 ### Pour la personne qui le maintient
 

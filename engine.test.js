@@ -142,6 +142,13 @@ test('bonus ad basis', () => near(calc(MIXSPELL, 'Bonus', {bonusAd: 40}).value, 
 test('crit damage reads total multiplier', () => near(calc(MIXSPELL, 'Crit', {critDmg: 40}).value, 2.15));
 test('level breakpoints', () => { near(calc(MIXSPELL, 'Steps', {level: 6}).value, 10); near(calc(MIXSPELL, 'Steps', {level: 13}).value, 20); });
 test('per level breakpoint counts from that level', () => { near(calc(MIXSPELL, 'PerLevel', {level: 1}).value, 0); near(calc(MIXSPELL, 'PerLevel', {level: 4}).value, 9); });
+test('a later per-level breakpoint replaces the earlier rate, and one without a rate ends it', () => {
+  // Ivern passive shape: 40, -3/level from 7, -4/level from 12, -2/level from 15, flat from 16.
+  const sp = {calcs: {Ivern: {parts: [{t: 'lvlBp', start: 40, bps: [[7, 0, -3], [12, 0, -4], [15, 0, -2], [16, 0]]}]}}, values: {}};
+  near(calc(sp, 'Ivern', {level: 11}).value, 40 - 3 * 5);
+  near(calc(sp, 'Ivern', {level: 14}).value, 40 - 3 * 5 - 4 * 3);
+  near(calc(sp, 'Ivern', {level: 18}).value, 40 - 3 * 5 - 4 * 3 - 2);
+});
 test('level interpolation', () => { near(calc(MIXSPELL, 'Lerp', {level: 1}).value, 40); near(calc(MIXSPELL, 'Lerp', {level: 18}).value, 210); });
 test('ref, sum, product, mult', () => near(calc(MIXSPELL, 'Combined', {rank: 1, level: 18}).value, (1 + 0.5 * 210) * 2));
 test('stat of subpart', () => near(calc(MIXSPELL, 'MaxHp', {bonusHp: 500}).value, 50));
@@ -586,4 +593,37 @@ test('a stat that scales with the champion: the best champion gets its own best 
     rules: {...DR.rules, itemStatPassives: {...DR.rules.itemStatPassives, flat: [{op: 'add', stat: 'hpregen', value: 10}]}}};
   const regen = Engine.rankStat(DH, {stat: 'hpregen', level: 18, count: 50}).rows.find((r) => r.champ === 'Regen');
   near(regen.value, 50 * 7);   // 6 × 'pct' = +600% of 50, better than any 'flat' mix on this champion
+});
+
+// Healing from life steal (basic attacks and on-hit) and omnivamp (all damage).
+const vampCombo = (vamp, steps, o = {}) => {
+  const side = attackerSide(o);
+  side.stats.total.lifesteal = vamp.lifesteal || 0;
+  side.stats.total.omnivamp = vamp.omnivamp || 0;
+  side.currentHpPct = o.yourHpPct ?? 50;
+  return Engine.runCombo(D3, side, {champ: 'Testo', stats: {base: {}, bonus: {}, total: {hp: o.maxHp ?? 1000, armor: 0, mr: 0}},
+    currentHpPct: 100}, steps);
+};
+test('life steal heals from basic attacks only, omnivamp from everything', () => {
+  const autos = vampCombo({lifesteal: 20}, [{autos: 2}]);
+  near(autos.healed, 0.2 * autos.rows[0].damage);
+  near(autos.rows[0].healed, autos.healed);
+  assert.equal(vampCombo({lifesteal: 20}, [{spell: 'Q'}]).healed, 0);
+  const q = vampCombo({omnivamp: 10}, [{spell: 'Q'}]);
+  near(q.healed, 0.1 * q.rows[0].damage);
+});
+test('on-hit item damage counts for life steal', () => {
+  const plain = vampCombo({lifesteal: 10}, [{autos: 3}]);
+  const kraken = vampCombo({lifesteal: 10}, [{autos: 3}], {items: ['kraken']});
+  near(kraken.healed - plain.healed, 0.1 * 50);
+});
+test('no healing from damage past the target\'s remaining health', () => {
+  const r = vampCombo({omnivamp: 10}, [{autos: 20}], {maxHp: 30});
+  near(r.healed, 3);
+});
+test('healing counted only up to your missing health', () => {
+  const side = attackerSide();
+  const missing = side.stats.total.hp * 0.02;
+  assert.equal(vampCombo({lifesteal: 100}, [{autos: 3}], {yourHpPct: 100}).healedUsed, 0);
+  near(vampCombo({lifesteal: 100}, [{autos: 3}], {yourHpPct: 98}).healedUsed, missing);
 });

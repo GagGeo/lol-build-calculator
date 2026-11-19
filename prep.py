@@ -287,7 +287,8 @@ def parse_damage_lines(tooltip, calc_names, value_names):
         if not re.search(r"damage", NOT_REAL_DAMAGE.sub(" ", words), re.I):
             continue
         # Damage to minions or monsters only.
-        sentence = following.split(".")[0]
+        # "..., reduced to 50% against minions" changes another effect, not where the damage applies.
+        sentence = re.sub(r"(?:reduced|increased) (?:to|by) \S+ against (?:minions|monsters)", "", following.split(".")[0])
         if (re.search(r"minion|monster", before, re.I) and not re.search(r"champion", before, re.I)) \
                 or NON_CHAMPION_AFTER.match(following) \
                 or (re.search(r"(?:against|to)\s+(?:a\s+)?(?:jungle\s+)?(?:minion|monster)", sentence, re.I)
@@ -299,6 +300,10 @@ def parse_damage_lines(tooltip, calc_names, value_names):
             simple = SIMPLE_NAME.match(m.group(1) if m.group(1) is not None else m.group(2))
             name = simple.group(1).lower() if simple else None
             after = segment[m.end():found[i + 1].start() if i + 1 < len(found) else len(segment)]
+            between = TAG.sub(" ", segment[found[i - 1].end():m.start()]) if i else ""
+            # "X plus Y per Z Chimes": Z is a count; "X to Y damage": Y is the top of a range (X kept).
+            if re.search(r"\b(per|to)\s*$", between, re.I):
+                continue
             if name in calcs:
                 term = {"calc": calcs[name]}
             elif name in values:
@@ -326,6 +331,102 @@ def parse_damage_lines(tooltip, calc_names, value_names):
     return lines, flags
 
 
+HEAL_TAG = re.compile(r"<healing>(.*?)</healing>", re.S)
+ALLY_WORD = re.compile(r"\ball(?:y|ies|ied)\b", re.I)
+SELF_WORD = re.compile(r"\b(?:himself|herself|itself|themselves|themself|self)\b", re.I)
+HEAL_VERB = re.compile(r"\b(?:restor\w*|heal(?:s|ed|ing)?|regenerat\w*|recover\w*|drain\w*)\b", re.I)  # not "Health"
+DAMAGE_DEALT = re.compile(r"^\s*%?\s*(?:of\s+)?(?:the\s+|all\s+)?(?:pre-mitigation\s+|post-mitigation\s+)?damage(?!\s+taken)", re.I)
+OTHER_UNIT = re.compile(r"^\s*%?\s*of\s+(?:the\s+)?(?:its|their|target'?s?|enemy'?s?|[A-Z]\w*'s)\b", re.I)
+CHAMPION = re.compile(r"(?<!non-)champion", re.I)
+
+
+def _heal_kind(after):
+    """Heal term kind from the text after its placeholder: flat, damageDealt, selfMax/selfMissing/selfCurrent."""
+    text = re.sub(r"\bof\s+(?:his|her)\s+", "of ", TAG.sub(" ", after), flags=re.I)  # "% of his missing Health"
+    percent = text.lstrip().startswith("%")
+    if DAMAGE_DEALT.match(text):
+        return "damageDealt", percent
+    if OTHER_UNIT.match(text):  # "% of its max Health": someone else's health
+        return "unsupported", True
+    base = HEALTH_BASE.match(text)
+    if base:
+        word = base.group(1).lower()
+        return {"missing": "selfMissing", "current": "selfCurrent"}.get(word, "selfMax"), percent
+    return ("unsupported", True) if percent else ("flat", False)
+
+
+def parse_heal_lines(tooltip, calc_names, value_names):
+    """Self-heal lines from a tooltip's <healing> segments: [{terms, [perSecond], [minimum]}] (terms as in
+    damage lines, plus {"n": number} for a number written in the text).
+
+    Kept only with a heal verb (restore, heal, regenerate, recover, drain) right before or inside the segment.
+    Skipped: heals for allies only, against minions or monsters only, health lost or paid, healing boosts,
+    "increased to ..." variants of a heal already read."""
+    calcs = {n.lower(): n for n in calc_names}
+    values = {n.lower(): n for n in value_names}
+    lines, previous_end = [], 0
+    clean = lambda html: re.sub(r"\s+", " ", TAG.sub(" ", re.sub(r"<br\s*/?>", ". ", html)))
+    for match in HEAL_TAG.finditer(tooltip):
+        segment = match.group(1)
+        words = TAG.sub(" ", PLACEHOLDER.sub(" ", segment))
+        sentence_before = re.split(r"[.!?:]\s", clean(tooltip[:match.start()]))[-1]
+        since_last = clean(tooltip[previous_end:match.start()])
+        previous_end = match.end()
+        near = re.split(r"[.!?:]\s", since_last)[-1]  # this sentence, since the previous heal
+        clause = re.split(r"[,;]", near)[-1]
+        following = clean(tooltip[match.end():match.end() + 200])
+        short = re.split(r"[.,;(]|\band\b", following)[0]
+        if re.search(r"increase|reduce|power|effectiveness", words, re.I) \
+                or re.search(r"(?:increased|reduced) (?:to|by)\s*$", near, re.I) \
+                or re.search(r"\b(?:below|above|under|at least|max(?:imum)?(?: of)?:?)\s*$", near, re.I) \
+                or re.search(r"\b(?:los(?:e|es|ing)|cost(?:s|ing)?|spend(?:s|ing)?|consum\w+)\s*$", near, re.I) \
+                or not (HEAL_VERB.search(sentence_before) or HEAL_VERB.search(words)):
+            continue
+        if re.match(r"\s*(?:to|for)\s+(?:\w+\s+){0,2}all(?:y|ies|ied)\b", following, re.I) \
+                or (ALLY_WORD.search(sentence_before) and not SELF_WORD.search(sentence_before + " " + short)):
+            continue
+        scope = clause + " " + words + " " + short
+        if (re.search(r"minion|monster|non-champion", scope, re.I) and not CHAMPION.search(scope)):
+            continue
+        found = list(PLACEHOLDER.finditer(segment))
+        terms = []
+        for i, m in enumerate(found):
+            simple = SIMPLE_NAME.match(m.group(1) if m.group(1) is not None else m.group(2))
+            name = simple.group(1).lower() if simple else None
+            last = i + 1 == len(found)
+            after = segment[m.end():found[i + 1].start() if not last else len(segment)] + (" " + following[:60] if last else "")
+            between = TAG.sub(" ", segment[found[i - 1].end():m.start()]) if i else ""
+            if re.search(r"\b(?:per|to|and|max:?)\s*$", between, re.I):  # a count, the top of a range, a cap
+                continue
+            if name in calcs:
+                term = {"calc": calcs[name]}
+            elif name in values:
+                term = {"value": values[name]}
+            else:
+                continue
+            term["kind"], percent = _heal_kind(after)
+            if simple.group(2) is not None and float(simple.group(2)) != 1:
+                term["mult"] = _num(float(simple.group(2)))
+            if percent:
+                term["percent"] = True
+            terms.append(term)
+        literal = re.search(r"(\d+(?:\.\d+)?)\s*%", words)
+        if not found and literal:  # "heals for 100% of all damage dealt"
+            kind, _ = _heal_kind(words[literal.end() - 1:] + " " + following[:60])
+            terms.append({"n": _num(float(literal.group(1))), "kind": kind, "percent": True})
+        if not terms:
+            continue
+        line = {"terms": terms}
+        if re.search(r"\b(?:per|each|every)\s+second", words + " " + short, re.I):
+            line["perSecond"] = True
+        if re.search(r"between|increased (?:up )?to .{0,40}based on|based on (?:his|her|their) missing Health",
+                     near + " " + words + " " + following[:80], re.I):
+            line["minimum"] = True  # the smallest value of a range is counted
+        if line not in lines:
+            lines.append(line)
+    return lines
+
+
 def _data_values(spell):
     out = {}
     for dv in spell.get("DataValues") or spell.get("mDataValues") or []:
@@ -351,16 +452,20 @@ def _resolve_strings(text, strings):
                   lambda m: strings.get(m.group(1).lower(), m.group(0)), text)
 
 
-def _one_spell(key, sid, name, maxrank, tooltip, bin_spell):
+def _one_spell(key, sid, name, maxrank, tooltip, bin_spell, keep_all=False):
     flags = [] if bin_spell is not None else ["no_cdragon_spell"]
     bin_spell = bin_spell or {}
     values = _data_values(bin_spell)
     raw_calcs = bin_spell.get("mSpellCalculations") or {}
     lines, line_flags = parse_damage_lines(tooltip, set(raw_calcs), set(values))
     flags += line_flags
+    heals = parse_heal_lines(tooltip, set(raw_calcs), set(values))
     # Keep only the calcs and values the damage lines reach (following refs).
-    calcs, todo = {}, [t["calc"] for l in lines for t in l["terms"] if "calc" in t]
-    used_values = {t["value"] for l in lines for t in l["terms"] if "value" in t}
+    calcs, todo = {}, [t["calc"] for l in lines + heals for t in l["terms"] if "calc" in t]
+    used_values = {t["value"] for l in lines + heals for t in l["terms"] if "value" in t}
+    if keep_all:  # passives: rules.py championPassiveStats may name any of them
+        todo += list(raw_calcs)
+        used_values |= set(values)
     while todo:
         cname = todo.pop()
         if cname in calcs or cname not in raw_calcs:
@@ -375,20 +480,37 @@ def _one_spell(key, sid, name, maxrank, tooltip, bin_spell):
         _walk_nodes(calcs[cname], visit)
     return {"key": key, "id": sid, "name": name, "maxrank": maxrank,
             "values": {k: v for k, v in values.items() if k in used_values},
-            "calcs": calcs, "lines": lines, "flags": flags}
+            "calcs": calcs, "lines": lines, "heals": heals, "flags": flags}
+
+
+def passive_tooltip(bin_data, record, strings):
+    """(passive spell id, its bin entry, its English tooltip or None)."""
+    lower = {k.lower(): v for k, v in bin_data.items() if isinstance(v, dict)}
+    passive_path = record.get("mCharacterPassiveSpell", "")
+    passive_id = passive_path.split("/")[-1]
+    entry = lower.get(passive_path.lower(), {})
+    loc = (((entry.get("mSpell") or {}).get("mClientData") or {}).get("mTooltipData") or {}).get("mLocKeys") or {}
+    keys = [loc.get("keyTooltip", "").lower(), f"spell_{passive_id.lower()}_tooltip",
+            f"spell_{passive_id.lower()}_tooltipextended"]
+    tooltip = next((strings[k] for k in keys if k in strings), None)
+    return passive_id, entry, None if tooltip is None else _resolve_strings(tooltip, strings)
+
+
+# A stat named in a passive outside its damage text: a candidate for championPassiveStats in rules.py.
+PASSIVE_STAT = re.compile(POSSIBLE_PASSIVE.pattern[:-1] + r"|Attack Range)")
+
+
+def passive_stat_words(tooltip):
+    return bool(PASSIVE_STAT.search(TAG.sub(" ", DAMAGE_TAG.sub(" ", tooltip or ""))))
 
 
 def build_spells(dd_en, dd_fr, bin_data, record, strings):
     """Passive + Q/W/E/R in DATA spell shape, from a Data Dragon champion, its CommunityDragon file and the string table."""
     lower = {k.lower(): v for k, v in bin_data.items() if isinstance(v, dict)}
     spells = []
-    passive_path = record.get("mCharacterPassiveSpell", "")
-    passive_id = passive_path.split("/")[-1]
-    tooltip = next((strings[k] for k in (f"spell_{passive_id.lower()}_tooltip",
-                                         f"spell_{passive_id.lower()}_tooltipextended") if k in strings), None)
-    entry = lower.get(passive_path.lower(), {})
+    passive_id, entry, tooltip = passive_tooltip(bin_data, record, strings)
     passive = _one_spell("P", passive_id, {"en": dd_en["passive"]["name"], "fr": dd_fr["passive"]["name"]}, 1,
-                         _resolve_strings(tooltip or "", strings), entry.get("mSpell") if entry else None)
+                         tooltip or "", entry.get("mSpell") if entry else None, keep_all=True)
     if tooltip is None:
         passive["flags"].append("no_tooltip")
     if not entry:
@@ -405,8 +527,9 @@ def build_spells(dd_en, dd_fr, bin_data, record, strings):
 
 
 def _line_unsupported(spell, line):
-    """Reasons a damage line can't be fully computed (unsupported parts or missing calcs)."""
+    """Reasons a damage line can't be fully computed (unsupported parts, missing calcs or values)."""
     bad, seen, todo = [], set(), [t["calc"] for t in line["terms"] if "calc" in t]
+    bad += ["missing value" for t in line["terms"] if "value" in t and t["value"] not in spell["values"]]
     while todo:
         name = todo.pop()
         if name in seen:
@@ -421,6 +544,8 @@ def _line_unsupported(spell, line):
                 bad.append(node["what"])
             elif node.get("t") == "ref":
                 todo.append(node["name"])
+            elif node.get("t") == "v" and node["name"] not in spell["values"]:
+                bad.append("missing value")
         _walk_nodes(spell["calcs"][name], visit)
     return bad
 
@@ -432,17 +557,51 @@ def skill_rank_flags(spells):
     return ["custom_skill_ranks"] if odd else []
 
 
+# DATA base key -> (Data Dragon key, CommunityDragon record key, multiplier). Data Dragon has shipped wrong
+# values (16.23: attack damage per level 0 for every champion), so the game files win when they have the key.
+BASE_STATS = {
+    "hp": ("hp", "baseHPModifiable", 1), "hpperlevel": ("hpperlevel", "hpPerLevelModifiable", 1),
+    "mp": ("mp", None, 1), "mpperlevel": ("mpperlevel", None, 1),
+    "armor": ("armor", "baseArmorModifiable", 1), "armorperlevel": ("armorperlevel", "armorPerLevelModifiable", 1),
+    "mr": ("spellblock", "baseMR", 1), "mrperlevel": ("spellblockperlevel", "mrPerLevel", 1),
+    "ad": ("attackdamage", "baseDamageModifiable", 1), "adperlevel": ("attackdamageperlevel", "damagePerLevelModifiable", 1),
+    "as": ("attackspeed", "attackSpeedModifiable", 1),
+    "asperlevel": ("attackspeedperlevel", "attackSpeedPerLevelModifiable", 1),
+    "ms": ("movespeed", "baseMoveSpeedModifiable", 1), "range": ("attackrange", "attackRangeModifiable", 1),
+    "hpregen": ("hpregen", "baseStaticHPRegenModifiable", 5), "hpregenperlevel": ("hpregenperlevel", "hpRegenPerLevelModifiable", 5),
+    "mpregen": ("mpregen", None, 1), "mpregenperlevel": ("mpregenperlevel", None, 1),
+}
+
+
+def base_stats(s, record):
+    """(base stats, {key: [champion-less 'dd -> cd' notes]}) with game-file values where present."""
+    base, changed = {}, {}
+    for key, (dd_key, cd_key, mult) in BASE_STATS.items():
+        value = s[dd_key]
+        cd = (record or {}).get(cd_key) if cd_key else None
+        if isinstance(cd, dict) and "baseValue" in cd:
+            game = round(cd["baseValue"] * mult, 4)
+            if abs(game - value) > 1e-3:
+                changed[key] = f"{value:g} -> {game:g}"
+            value = game
+        base[key] = value
+    return base, changed
+
+
 POSSIBLE_RUNE_STAT = re.compile(r"(Adaptive Force|Attack Speed|Ability Haste|Health|Armor|Magic Resist|Move Speed)")
 
 
 def build_champions(dd_en, dd_fr, records):
     """Champions in DATA.champions shape. `records` maps id -> CommunityDragon CharacterRecords/Root or None."""
-    champs, report = {}, []
+    champs, report, fixed = {}, [], collections.defaultdict(list)
     for cid, en in dd_en["data"].items():
         fr = dd_fr["data"].get(cid, en)
         s = en["stats"]
         record = records.get(cid)
         flags = []
+        base, changed = base_stats(s, record)
+        for key, note in changed.items():
+            fixed[key].append(f"{cid} {note}")
         if record is None:
             flags.append("no_cdragon_record")
             report.append(f"no CommunityDragon record for {cid}: attack speed ratio = base attack speed, adaptive = AD")
@@ -455,19 +614,13 @@ def build_champions(dd_en, dd_fr, records):
             "name": {"en": en["name"], "fr": fr["name"]},
             "title": {"en": en["title"], "fr": fr["title"]},
             "resource": en.get("partype", ""),
-            "base": {
-                "hp": s["hp"], "hpperlevel": s["hpperlevel"], "mp": s["mp"], "mpperlevel": s["mpperlevel"],
-                "armor": s["armor"], "armorperlevel": s["armorperlevel"],
-                "mr": s["spellblock"], "mrperlevel": s["spellblockperlevel"],
-                "ad": s["attackdamage"], "adperlevel": s["attackdamageperlevel"],
-                "as": s["attackspeed"], "asratio": round(ratio, 4), "asperlevel": s["attackspeedperlevel"],
-                "ms": s["movespeed"], "range": s["attackrange"],
-                "hpregen": s["hpregen"], "hpregenperlevel": s["hpregenperlevel"],
-                "mpregen": s["mpregen"], "mpregenperlevel": s["mpregenperlevel"],
-            },
+            "base": {**base, "asratio": round(ratio, 4)},
             "adaptiveAP": adaptive_ap,
             "flags": flags,
         }
+    for key, notes in sorted(fixed.items()):
+        report.append(f"base {key} taken from game files for {len(notes)} champions "
+                      f"(Data Dragon differs): {', '.join(notes[:8])}{' ...' if len(notes) > 8 else ''}")
     return champs, report
 
 
@@ -547,6 +700,8 @@ def main(argv):
 
     champions, champ_report = build_champions(ch_en, ch_fr, records)
     unsupported, unparsed, spells_ok, spells_all = collections.Counter(), [], 0, 0
+    possible_champ_stats = sorted(cid for cid, (rec, data, _, _) in files.items()
+                                  if passive_stat_words(passive_tooltip(data, rec or {}, strings)[2]))
     for cid, (rec, data, dd_en, dd_fr) in files.items():
         spells = build_spells(dd_en, dd_fr, data, rec or {}, strings)
         champions[cid]["spells"] = spells
@@ -564,6 +719,10 @@ def main(argv):
             unsupported.update(bad)
             spells_ok += not bad
     coverage = f"spells with damage fully readable: {spells_ok}/{spells_all} ({100 * spells_ok / max(spells_all, 1):.1f}%)"
+    heal_lines = [(cid, s) for cid, c in champions.items() for s in c["spells"] if s["heals"]]
+    heals_ok = sum(1 for _, s in heal_lines if not _line_unsupported(s, s["heals"][0])
+                   and all(t["kind"] != "unsupported" for t in s["heals"][0]["terms"]))
+    heal_coverage = f"spells with a self-heal read: {len(heal_lines)}, fully readable: {heals_ok}"
     items, groups, item_report = build_items(it_en, it_fr, items_bin)
     runes = build_runes(rr_en, rr_fr)
     from rules import RULES
@@ -582,7 +741,8 @@ def main(argv):
             "rules": RULES, "review": {"possibleStatPassives": possible_passives, "possibleRuneStats": possible_runes,
                                        "possibleItemDamage": possible_item_damage,
                                        "possibleRuneDamage": possible_rune_damage,
-                                       "possibleSurvival": possible_survival}}
+                                       "possibleSurvival": possible_survival,
+                                       "possibleChampionStats": possible_champ_stats}}
 
     out_dir = root / "data"
     out_dir.mkdir(exist_ok=True)
@@ -608,9 +768,11 @@ def main(argv):
         ("Unknown stats", [l for l in item_report if l.startswith("unknown stat")]),
         ("Stats object mismatches", [l for l in item_report if l.startswith("stats mismatch")]),
         ("Possible stat passives (review in rules.py)", [l for l in item_report if l.startswith("possible stat")]),
+        ("Possible champion stat passives (review in rules.py)",
+         [f"{c} {champions[c]['spells'][0]['name']['en']}" for c in possible_champ_stats]),
         ("Possible rune stats (review in rules.py)",
          [f"{k} {runes['byId'][k]['name']['en']}" for k in possible_runes]),
-        ("Spell coverage", [coverage]),
+        ("Spell coverage", [coverage, heal_coverage]),
         ("Spells with unparsed damage text", unparsed),
         ("Unsupported formula parts (count)", [f"{n} {what}" for what, n in unsupported.most_common()]),
         ("Possible item damage effects (review in rules.py)",
@@ -619,7 +781,7 @@ def main(argv):
          [f"{k} {runes['byId'][k]['name']['en']}" for k in possible_rune_damage]),
         ("Possible survival items for the advisor (review in rules.py)",
          [f"{i} {items[i]['name']['en']}" for i in possible_survival]),
-        ("Missing CommunityDragon records", champ_report),
+        ("Champion records (missing, or base stats corrected from game files)", champ_report),
         ("CommunityDragon fallbacks", report),
         (f"Changes since {previous[-1].stem}" if previous else "Changes (no previous patch)", diff),
     ]

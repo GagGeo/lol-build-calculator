@@ -1,6 +1,6 @@
 import unittest
 
-from prep import parse_item_stats, build_items, build_runes, build_champions, diff_patches, normalize_calc, parse_damage_lines, build_spells, skill_rank_flags
+from prep import parse_item_stats, build_items, build_runes, build_champions, diff_patches, normalize_calc, parse_damage_lines, build_spells, skill_rank_flags, passive_stat_words, parse_heal_lines
 
 CLEAVER = ("<mainText><stats><attention>45</attention> Attack Damage<br>"
            "<attention>400</attention> Health<br><attention>20</attention> Ability Haste"
@@ -151,7 +151,9 @@ def _champ(cid, name, title):
 DD_CH = {"data": {"Annie": _champ("Annie", "Annie", "the Dark Child"), "Zed": _champ("Zed", "Zed", "the Master")}}
 DD_CH_FR = {"data": {"Annie": _champ("Annie", "Annie", "l'Enfant obscur"), "Zed": _champ("Zed", "Zed", "le Maître")}}
 RECORDS = {"Annie": {"attackSpeedRatioModifiable": {"baseValue": 0.625},
-                     "mAdaptiveForceToAbilityPowerWeight": 1.0},
+                     "mAdaptiveForceToAbilityPowerWeight": 1.0,
+                     "damagePerLevelModifiable": {"baseValue": 3.4000000953674316},
+                     "baseStaticHPRegenModifiable": {"baseValue": 1.1}},
            "Zed": None}
 
 
@@ -171,6 +173,14 @@ class BuildChampions(unittest.TestCase):
         self.assertEqual(c["title"], {"en": "the Dark Child", "fr": "l'Enfant obscur"})
         self.assertEqual(c["resource"], "Mana")
         self.assertEqual(c["flags"], [])
+
+    def test_base_stats_from_game_files_when_present(self):
+        b = self.champs["Annie"]["base"]
+        self.assertEqual(b["adperlevel"], 3.4)  # Data Dragon says 2.65
+        self.assertEqual(b["hpregen"], 5.5)  # game files: per second, x5
+        self.assertEqual(b["armorperlevel"], 4.7)  # key absent from game files: Data Dragon kept
+        self.assertTrue(any("adperlevel" in line and "Annie" in line for line in self.report))
+        self.assertFalse(any("hpregen" in line for line in self.report))
 
     def test_missing_record_falls_back_and_flags(self):
         c = self.champs["Zed"]
@@ -388,6 +398,18 @@ class ParseDamageLines(unittest.TestCase):
         t = "deals <physicalDamage>{{ d }} physical damage</physicalDamage>, increased by up to 60% based on his missing Health."
         self.assertTrue(parse_damage_lines(t, set(), {"D"})[0][0]["varies"])
 
+    def test_minion_reduction_of_another_effect_keeps_the_line(self):
+        tip = ("Attacks deal <magicDamage>@PDamage@ max Health magic damage</magicDamage> and restore "
+               "<healing>@Heal*100@% of damage dealt as Health</healing>, reduced to @Mod*100@% against minions.")
+        lines, _ = parse_damage_lines(tip, {"PDamage"}, set())
+        self.assertEqual(lines[0]["terms"][0]["calc"], "PDamage")
+
+    def test_count_after_per_and_top_of_range_are_not_damage(self):
+        lines, _ = parse_damage_lines("<magicDamage>@A@ plus @B@ per @C@ Chimes magic damage</magicDamage>", set(), {"A", "B", "C"})
+        self.assertEqual([t["value"] for t in lines[0]["terms"]], ["A", "B"])
+        lines, _ = parse_damage_lines("<physicalDamage>@A@ to @B@ physical damage</physicalDamage>", set(), {"A", "B"})
+        self.assertEqual([t["value"] for t in lines[0]["terms"]], ["A"])
+
     def test_duplicate_lines_kept_once(self):
         t = "<magicDamage>{{ d }} magic damage</magicDamage> then <magicDamage>{{ d }} magic damage</magicDamage>"
         self.assertEqual(len(parse_damage_lines(t, {"D"}, set())[0]), 1)
@@ -418,6 +440,48 @@ ANNIE_RECORD = {"spellNames": ["AnnieQAbility/AnnieQ", "AnnieWAbility/AnnieW", "
 STRINGS = {"spell_anniepassive_tooltip": "Stuns for @StunDuration@ seconds."}
 
 
+class ParseHealLines(unittest.TestCase):
+    def kinds(self, tip, names):
+        lines = parse_heal_lines(tip, set(), set(names))
+        return [[(t["value"], t["kind"]) for t in l["terms"]] for l in lines]
+
+    def test_self_flat_and_ally_skipped(self):  # Alistar passive
+        tip = ("Alistar roars, restoring <healing>@BaseHeal@ Health</healing> to himself and "
+               "<healing>@AllyHeal@ Health</healing> to nearby allied champions.")
+        self.assertEqual(self.kinds(tip, ["BaseHeal", "AllyHeal"]), [[("BaseHeal", "flat")]])
+
+    def test_ally_only_sentence_skipped(self):
+        tip = "Soraka heals an ally champion for <healing>@Heal@ Health</healing>."
+        self.assertEqual(self.kinds(tip, ["Heal"]), [])
+
+    def test_percent_of_damage_dealt(self):  # Aatrox passive, Briar passive
+        tip = "and restore <healing>@PHealingRatio*100@% of damage dealt as Health</healing>"
+        lines = parse_heal_lines(tip, set(), {"PHealingRatio"})
+        self.assertEqual(lines[0]["terms"], [{"value": "PHealingRatio", "kind": "damageDealt", "mult": 100, "percent": True}])
+        tip = "<healing>Heals Briar for @HealPercent*100@% of the pre-mitigation damage</healing>"
+        self.assertEqual(self.kinds(tip, ["HealPercent"]), [[("HealPercent", "damageDealt")]])
+
+    def test_own_max_and_missing_health(self):  # Garen passive, Illaoi passive
+        self.assertEqual(self.kinds("Garen regenerates <healing>@RegenCalc@ max Health</healing> every 5 seconds",
+                                    ["RegenCalc"]), [[("RegenCalc", "selfMax")]])
+        self.assertEqual(self.kinds("restores <healing>@MissingHPPercentHeal*100@% missing Health</healing> to Illaoi.",
+                                    ["MissingHPPercentHeal"]), [[("MissingHPPercentHeal", "selfMissing")]])
+
+    def test_health_lost_or_paid_and_other_units_health_are_not_heals(self):
+        self.assertEqual(self.kinds("instead losing <healing>@CurrentHealthLoss*100@% current Health</healing>",
+                                    ["CurrentHealthLoss"]), [])  # Dr. Mundo
+        self.assertEqual(self.kinds("a Grove that costs <healing>@HealthTooltip@ Health</healing>", ["HealthTooltip"]), [])
+        self.assertEqual(self.kinds("he restores <healing>@RegenPercent@ of its max Health</healing>.", ["RegenPercent"]),
+                         [[("RegenPercent", "unsupported")]])  # Trundle: the dead enemy's health
+        self.assertEqual(self.kinds("gains up to <health>@X@%</health> increased <healing>Healing</healing>", ["X"]), [])
+
+    def test_minion_only_and_per_second(self):
+        self.assertEqual(self.kinds("restoring <healing>@MonsterHealing@ Health</healing> when used against a minion.",
+                                    ["MonsterHealing"]), [])
+        lines = parse_heal_lines("restores <healing>@H@ Health per second</healing>", set(), {"H"})
+        self.assertTrue(lines[0]["perSecond"])
+
+
 class BuildSpells(unittest.TestCase):
     def setUp(self):
         self.spells = build_spells(DD_ANNIE, DD_ANNIE_FR, ANNIE_BIN, ANNIE_RECORD, STRINGS)
@@ -428,6 +492,12 @@ class BuildSpells(unittest.TestCase):
         self.assertEqual(self.spells[0]["name"], {"en": "Pyromania", "fr": "Pyromanie"})
         self.assertEqual(self.spells[1]["maxrank"], 5)
         self.assertEqual(self.spells[1]["name"], {"en": "AnnieQ name", "fr": "AnnieQ name fr"})
+
+    def test_heal_lines_kept_with_their_values(self):
+        strings = {"spell_anniepassive_tooltip": "Annie restores <healing>@StunDuration@ Health</healing>."}
+        p = build_spells(DD_ANNIE, DD_ANNIE_FR, ANNIE_BIN, ANNIE_RECORD, strings)[0]
+        self.assertEqual(p["heals"], [{"terms": [{"value": "StunDuration", "kind": "flat"}]}])
+        self.assertEqual(self.spells[1]["heals"], [])
 
     def test_q_lines_calcs_and_trimmed_values(self):
         q = self.spells[1]
@@ -456,6 +526,25 @@ class BuildSpells(unittest.TestCase):
         strings = {"spell_anniepassive_tooltip": "{{Spell_Inner}}", "spell_inner": "<magicDamage>@StunDuration@ magic damage</magicDamage>"}
         spells = build_spells(DD_ANNIE, DD_ANNIE_FR, ANNIE_BIN, ANNIE_RECORD, strings)
         self.assertEqual(spells[0]["lines"][0]["terms"], [{"value": "StunDuration", "kind": "flat"}])
+
+    def test_passive_tooltip_from_loc_key_and_all_calcs_kept(self):
+        bin_data = {**ANNIE_BIN, "Characters/Annie/Spells/AnniePassiveAbility/AnniePassive": {"mSpell": {
+            "DataValues": [{"name": "Range", "values": [0, 0]}],
+            "mSpellCalculations": {"BonusRange": {"mFormulaParts": [
+                {"mEndValue": 150.0, "__type": "ByCharLevelInterpolationCalculationPart"}]}},
+            "mClientData": {"mTooltipData": {"mLocKeys": {"keyTooltip": "Passive_AnniePassive_Tooltip"}}}}}}
+        strings = {"passive_anniepassive_tooltip": "<magicDamage>@BonusRange@ magic damage</magicDamage>"}
+        p = build_spells(DD_ANNIE, DD_ANNIE_FR, bin_data, ANNIE_RECORD, strings)[0]
+        self.assertEqual(p["flags"], [])
+        self.assertEqual(len(p["lines"]), 1)
+        self.assertEqual(p["calcs"]["BonusRange"]["parts"], [{"t": "lvlLerp", "a": 0, "b": 150}])
+        self.assertIn("Range", p["values"])
+
+    def test_passive_stat_words(self):
+        self.assertTrue(passive_stat_words("Tristana's Attack Range is increased by @X@."))
+        self.assertTrue(passive_stat_words("Rammus gains <scaleAD>@T@ Attack Damage</scaleAD>."))
+        self.assertFalse(passive_stat_words("Attacks deal <magicDamage>@D@ max Health magic damage</magicDamage>."))
+        self.assertFalse(passive_stat_words("Annie stuns."))
 
     def test_skill_rank_flags(self):
         self.assertEqual(skill_rank_flags(self.spells), [])

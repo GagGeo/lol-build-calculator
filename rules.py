@@ -70,8 +70,82 @@ RULES = {
         "6697",  # Hubris: AD stacks per kill
         "6665",  # Jak'Sho: +30% bonus resists in combat
     ],
-    # Champions whose own passive changes their stats in a way not counted yet (stage 2 reads passives).
-    "championStatsUnknown": ["Jhin", "Cassiopeia", "Aphelios", "Pyke", "Ornn", "Kayle"],
+    # --- Champion passives ----------------------------------------------------------------------------
+    # Permanent stats from the champion's own passive. Entry forms (engine.js passiveStats):
+    # {"stat", "calc"} = that passive formula at this level, read on the stats without the passive
+    #   (a fraction shown as % becomes a percentage); "ofTotal": stat = fraction of that total stat;
+    #   "mult": x; "asMulTotal": the result is a % increase of the stat's total.
+    # {"stat", "value" | "min"/"max" | "steps"} as in runeStats; {"stat", "mulTotal": x};
+    # {"op": "convertBonus", "from", "to", "per"}; {"op": "intent", "critMul", "adPerExcessCrit"}.
+    # Optional "stacked": true = only with "assume fully stacked", false = only without.
+    # Formulas and values from CommunityDragon champion files, 16.23.
+    "championPassiveStats": {
+        "Tristana": [{"stat": "range", "calc": "BonusPassiveRange"}],                    # 0 -> 150
+        "Kayle": [{"stat": "range", "steps": [[6, 350], [16, 450]]}],                    # 525 at 6, 625 at 16
+        "Gnar": [{"stat": "range", "calc": "TotalAttackRange"}, {"stat": "ms", "calc": "TotalMS"},
+                 {"stat": "as", "calc": "TotalAS"}],                                     # Mini Gnar
+        "Rammus": [{"stat": "ad", "calc": "TotalDamage"}],                               # from armor and MR
+        "Hecarim": [{"stat": "ad", "calc": "BonusAD"}],                                  # from bonus move speed
+        "Diana": [{"stat": "as", "calc": "BonusAS"}],
+        "MonkeyKing": [{"stat": "armor", "calc": "BonusArmor", "stacked": False},
+                       {"stat": "armor", "calc": "TooltipMaxArmor", "stacked": True}],   # x6 at 5 stacks
+        "Nasus": [{"stat": "lifesteal", "calc": "LifestealTooltip"}],
+        "DrMundo": [{"stat": "hpregen", "calc": "MaxHealthRegen", "ofTotal": "hp"}],
+        "Ryze": [{"stat": "mp", "calc": "PassiveManaCalcTooltip", "asMulTotal": True}],  # % max mana from AP
+        "Vladimir": [{"stat": "ap", "calc": "ApproximateAPBonusAvoidingRecursion"},
+                     {"stat": "hp", "calc": "ApproximateHPBonusAvoidingRecursion"}],
+        "Pyke": [{"op": "convertBonus", "from": "hp", "to": "ad", "per": 14}],
+        "Yasuo": [{"op": "intent", "critMul": 2, "adPerExcessCrit": 0.5}],
+        "Yone": [{"op": "intent", "critMul": 2, "adPerExcessCrit": 0.5}],
+        "Tryndamere": [{"stat": "crit", "calc": "PassiveCritConversionTooltip", "mult": 100, "stacked": True}],  # 100 Fury
+        "Syndra": [{"stat": "ap", "mulTotal": 0.15, "stacked": True}],                   # 100 Splinters
+    },
+    # Champions whose own passive changes their stats in a way not counted: shown as "check in game".
+    "championStatsUnknown": [
+        "Jhin",        # fixed attack speed, bonus AD from crit and attack speed
+        "Cassiopeia",  # no boots, move speed per level
+        "Aphelios",    # stats from rank-ups instead of abilities
+        "Ornn",        # bonus resists and health from items
+        "Belveth",     # attack speed per Lavender stack (value not readable)
+        "Kindred",     # attack range from Marks
+        "Rengar",      # AD from Bonetooth Necklace stacks
+    ],
+    # Flagged champions whose passive gives no permanent stat (healing, shields, temporary or conditional
+    # buffs, allies, after death) or whose stat is already counted elsewhere (stackers).
+    "championStatsReviewed": [
+        "Aatrox", "Ahri", "Akali", "Akshan", "Alistar", "Ambessa", "Anivia", "Aurora", "Azir", "Bard", "Blitzcrank",
+        "Brand", "Briar", "Corki", "Darius", "Ekko", "Elise", "Evelynn", "Ezreal", "Fiora", "Gangplank", "Garen",
+        "Gragas", "Graves", "Gwen", "Heimerdinger", "Illaoi", "Irelia", "Ivern", "Janna", "Jax", "Jayce", "Jinx",
+        "KSante", "Kaisa", "Kled", "KogMaw", "Leblanc", "LeeSin", "Lillia", "Locke", "Maokai", "Mel", "Mordekaiser",
+        "Nami", "Nidalee", "Nocturne", "Nunu", "Olaf", "RekSai", "Rell", "Renekton", "Rumble", "Samira", "Sejuani",
+        "Seraphine", "Sett", "Shaco", "Singed", "Sivir", "Soraka", "Sylas", "Taliyah", "Taric", "Teemo", "Trundle",
+        "Udyr", "Varus", "Vayne", "Viego", "Volibear", "Warwick", "Xerath", "XinZhao", "Yorick", "Yunara", "Zaahen",
+        "Zac", "Zed", "Zeri",
+    ],
+    # Passive damage that isn't part of your own combo (after death, needs allies or a turret): left out of
+    # the default combo, still available as a step.
+    "passiveNotInCombo": ["Sion", "KogMaw", "Lissandra", "Azir", "Leona", "Milio"],
+    # Passive damage that only exists from this level (Kayle: Aflame waves).
+    "passiveFromLevel": {"Kayle": 11},
+    # --- Healing in the combo --------------------------------------------------------------------------
+    # Self-heals read from spell text that don't happen in a plain 1v1 combo: not counted (reason kept).
+    "spellHealsNotInCombo": {
+        "Ahri P": "takedowns and minion kills", "Alistar P": "needs 7 stacks", "Bard W": "shrine for allies",
+        "DrMundo P": "canister pickup; regen counted in stats", "Evelynn P": "out of combat",
+        "Garen P": "out of combat", "Karma R": "only with empowered W", "Kayn E": "entering terrain",
+        "Kindred W": "100 stacks", "Kindred R": "zone heal at the end", "Lissandra R": "self-cast only",
+        "Locke W": "stored damage", "MonkeyKing P": "regeneration over time", "Morgana P": "from her other abilities",
+        "Mordekaiser W": "recast converts the shield", "Naafiri E": "heals her packmates",
+        "RekSai P": "while burrowed", "Sett P": "regeneration from missing health", "Sivir E": "blocking an ability",
+        "Smolder R": "his mom's hit", "Swain P": "soul fragments", "Talon Q": "kill with Q",
+        "Taric Q": "per stack", "Trundle P": "enemy death", "Tryndamere Q": "spends Fury",
+        "Viego P": "possessing a soul", "Zac P": "picking up goo", "Zilean R": "revive",
+    },
+    # Self-heals whose number can't be read correctly: shown as "check in game".
+    "spellHealsUnknown": {"Kayn R": "built on the target's max health damage"},
+    # Items that apply Grievous Wounds: the holder's enemy heals this much less (fraction). Thornmail and
+    # Bramble Vest apply it when attacked; the others when they deal damage, assumed during the fight.
+    "grievousWounds": {"3033": 0.4, "3123": 0.4, "3165": 0.4, "3916": 0.4, "3075": 0.4, "3076": 0.4, "6609": 0.4},
     # --- Stage 2: damage inside one combo ---------------------------------------------------------
     # Effect kinds (engine.js runCombo): proc, onHit, spellblade, afterSpell, amp, shred. See the stage 2 plan.
     # base: number or [level 1, level 18]; ratios are fractions of ad/bonusAd/baseAd/ap/hp/bonusHp/
@@ -193,7 +267,7 @@ RULES = {
     "advisorScored": ["2501", "2510", "2522", "2526", "3036", "3083", "3084", "3119", "3153", "4633", "4645", "4646",
                       "6610", "6621", "6653", "6657", "6672", "6676", "6694", "6695", "6699"],
     # Permanent stat per stack. Value forms: number per stack; {"per": n, "value": v} = v every n stacks;
-    # {"byRRank": [r1, r2, r3]} = per stack, by ultimate rank (R at levels 6/11/16).
+    # {"value": v, "max": m} = v per stack up to m; {"byRRank": [r1, r2, r3]} = per stack, by ultimate rank (R at 6/11/16).
     # Values from CommunityDragon champion files, 16.23.
     "stackers": {
         "Veigar": {"ap": 1},
@@ -201,6 +275,9 @@ RULES = {
         "Sion": {"hp": 1},
         "Senna": {"ad": 0.75, "crit": {"per": 20, "value": 10}},
         "Chogath": {"hp": {"byRRank": [40, 80, 120]}},
+        "Swain": {"hp": 15},
+        "Shyvana": {"armor": 0.3, "mr": 0.3},
+        "Sona": {"ah": {"value": 0.5, "max": 60}},
     },
     # Rune id -> list of entries, applied when "assume fully stacked" is on (or always, if "always").
     # Entry forms: {"stat", "value"}; {"stat", "min", "max"} = linear from level 1 to 18;

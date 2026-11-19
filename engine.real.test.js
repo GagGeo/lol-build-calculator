@@ -93,3 +93,95 @@ test('rankings: no gold limit is never worse than a gold limit (any patch)', () 
     assert.ok(free >= capped - 1e-9, `${stat}: ${free} < ${capped}`);
   }
 });
+
+// --- Champion passives and level growth (feedback from a Grandmaster player) ------------------------
+const at = (champ, level, o = {}) => Engine.championStats(D, {champ, level, items: o.items || [], runes: null,
+  stacked: !!o.stacked, stacks: o.stacks || 0});
+test('every champion but a few gains attack damage per level', () =>
+  assert.ok(Object.values(D.champions).filter((c) => at(c.id, 18).total.ad <= at(c.id, 1).total.ad).length <= 3));
+test('Tristana: AD and attack range grow with level', pinned, () => {
+  assert.equal(Math.round(at('Tristana', 18).total.ad * 10) / 10, 117.8);
+  assert.equal(at('Tristana', 1).total.range, 550);
+  assert.equal(at('Tristana', 18).total.range, 700);
+});
+test('Kayle: range 525 from level 6, 625 from 16', pinned, () =>
+  assert.deepEqual([5, 6, 15, 16].map((l) => at('Kayle', l).total.range), [175, 525, 525, 625]));
+test('Pyke: bonus health becomes AD (14 to 1)', pinned, () => {
+  const bare = at('Pyke', 1), cleaver = at('Pyke', 1, {items: ['3071']});
+  assert.equal(cleaver.total.hp, bare.total.hp);
+  assert.ok(Math.abs(cleaver.total.ad - bare.total.ad - 45 - 400 / 14) < 1e-9);
+});
+test('Yasuo: crit chance doubled, crit over 100% becomes AD', pinned, () => {
+  const s = at('Yasuo', 1, {items: ['3031', '3046', '3094']}); // 25 + 25 + 25 crit -> 150%
+  assert.equal(s.total.crit, 100);
+  assert.ok(Math.abs(s.total.ad - (at('Yasuo', 1).total.ad + 75 + 25)) < 1e-9); // IE 75 AD, 50% excess x 0.5
+});
+test('stat passives that cannot be read are flagged, never silently zero', () => {
+  for (const c of Object.keys(D.rules.championPassiveStats)) {
+    for (const stacked of [false, true]) assert.deepEqual(at(c, 18, {stacked}).flags, [], c);
+  }
+});
+test('Sona: Ability Haste stacks stop at 60', () => assert.equal(at('Sona', 1, {stacks: 500}).bonus.ah, 60));
+test('default combo has the passive after the autos when it deals damage', () => {
+  assert.deepEqual(Engine.defaultCombo(D, 'Quinn').map((s) => s.spell || 'A'), ['Q', 'W', 'E', 'A', 'P', 'R']);
+  assert.ok(!Engine.defaultCombo(D, 'Tristana').some((s) => s.spell === 'P'));
+  assert.ok(!Engine.defaultCombo(D, 'Sion').some((s) => s.spell === 'P')); // only after death
+});
+test('Quinn combo counts Harrier', pinned, () => {
+  const side = (champ) => {
+    const sel = {champ, level: 9, items: [], runes: null, stacked: false, stacks: 0};
+    return {...sel, priority: ['Q', 'W', 'E'], stats: Engine.championStats(D, sel), currentHpPct: 100};
+  };
+  const r = Engine.runCombo(D, side('Quinn'), side('Garen'), Engine.defaultCombo(D, 'Quinn'));
+  const p = r.rows.find((row) => row.label === 'P');
+  assert.ok(p && p.damage > 0 && !p.notes.includes('excluded'), JSON.stringify(p));
+});
+test('Kayle passive waves only from level 11', () => {
+  const side = (level) => {
+    const sel = {champ: 'Kayle', level, items: [], runes: null, stacked: false, stacks: 0};
+    return {...sel, priority: ['Q', 'W', 'E'], stats: Engine.championStats(D, sel)};
+  };
+  const target = {stats: {base: {}, bonus: {}, total: {hp: 1000, armor: 0, mr: 0}}};
+  assert.equal(Engine.spellDamage(D, side(10), target, 'P').learned, false);
+  assert.ok(Engine.spellDamage(D, side(11), target, 'P').damage > 0);
+});
+
+// --- Spell heals and Grievous Wounds ------------------------------------------------------------------
+const healSide = (champ, level = 9, o = {}) => {
+  const sel = {champ, level, items: o.items || [], runes: null, stacked: false, stacks: 0};
+  return {...sel, priority: ['Q', 'W', 'E'], stats: Engine.championStats(D, sel), currentHpPct: o.hpPct ?? 50};
+};
+test('% of damage dealt heals scale with the damage (Warwick Q)', () => {
+  const s = healSide('Warwick');
+  const a = Engine.spellHeal(D, s, 'Q', {damage: 100}), b = Engine.spellHeal(D, s, 'Q', {damage: 200});
+  assert.ok(a.heal > 0 && Math.abs(b.heal - 2 * a.heal) < 1e-9, JSON.stringify(a));
+});
+test('% of missing health heals read your current health (Darius Q)', () => {
+  const s = healSide('Darius'), max = s.stats.total.hp;
+  const half = Engine.spellHeal(D, s, 'Q', {selfHp: max / 2}).heal, quarter = Engine.spellHeal(D, s, 'Q', {selfHp: max * 0.75}).heal;
+  assert.ok(half > 0 && Math.abs(half - 2 * quarter) < 1e-9);
+});
+test('heals that need something outside the combo are not counted (Garen passive)', () =>
+  assert.equal(Engine.spellHeal(D, healSide('Garen'), 'P', {}).heal, 0));
+test('a heal that cannot be read is flagged, not guessed (Camille W)', () =>
+  assert.ok(Engine.spellHeal(D, healSide('Camille'), 'W', {damage: 100}).unsupported.length > 0));
+test('Heal and Shield Power boosts spell heals', () => {
+  const s = healSide('Warwick'), base = Engine.spellHeal(D, s, 'Q', {damage: 100}).heal;
+  const boosted = {...s, stats: {...s.stats, total: {...s.stats.total, hsp: 20}}};
+  assert.ok(Math.abs(Engine.spellHeal(D, boosted, 'Q', {damage: 100}).heal - base * 1.2) < 1e-9);
+});
+test('Grievous Wounds on the enemy cuts all your healing by 40%', () => {
+  const target = (items) => ({champ: 'Garen', stats: Engine.championStats(D, {champ: 'Garen', level: 9, items, runes: null}),
+    currentHpPct: 100, items});
+  const steps = [{spell: 'Q'}, {autos: 3}];
+  const you = healSide('Warwick', 9, {items: ['3072'], hpPct: 10}); // Bloodthirster: life steal too
+  const plain = Engine.runCombo(D, you, target([]), steps);
+  const wounded = Engine.runCombo(D, you, target(['3916']), steps); // Oblivion Orb: AP only, same defenses
+  assert.ok(plain.healed > 0);
+  assert.equal(wounded.grievous, 0.4);
+  assert.ok(Math.abs(wounded.healed - 0.6 * plain.healed) < 1e-9);
+});
+test('spell heals land in the combo row of that spell', () => {
+  const r = Engine.runCombo(D, healSide('Warwick'), healSide('Garen'), [{spell: 'Q'}]);
+  assert.ok(r.rows[0].healed > 0 && Math.abs(r.healed - r.rows[0].healed) < 1e-9);
+});

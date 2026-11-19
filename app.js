@@ -57,11 +57,19 @@ const sourceName = (source) => {
 
 function createPanel(container, side, onChange) {
   const champs = Object.values(DATA.champions);
+  const firstChamp = champs.slice().sort(byName)[side === 'you' ? 0 : 1].id;
   const state = {
-    champ: champs.slice().sort(byName)[side === 'you' ? 0 : 1].id, level: 1, stacks: 0, stacked: false,
+    champ: firstChamp, level: 1, stacks: 0, stacked: false,
     items: [null, null, null, null, null, null],
     runes: Engine.normalizeRunePage(DATA, {}),
-    currentHpPct: 100, priority: ['Q', 'W', 'E'], combo: Engine.DEFAULT_COMBO.map((s) => ({...s})), gold: 0,
+    currentHpPct: 100, priority: ['Q', 'W', 'E'], combo: Engine.defaultCombo(DATA, firstChamp), gold: 0,
+  };
+  // A new champion gets its own default combo, unless the combo was edited.
+  const switchChamp = (champ) => {
+    if (JSON.stringify(state.combo) === JSON.stringify(Engine.defaultCombo(DATA, state.champ))) {
+      state.combo = Engine.defaultCombo(DATA, champ);
+    }
+    state.champ = champ;
   };
   let removedNotice = '';
 
@@ -118,7 +126,7 @@ function createPanel(container, side, onChange) {
 
   // --- events -------------------------------------------------------------
   ui.champ.addEventListener('change', () => {
-    state.champ = ui.champ.value;
+    switchChamp(ui.champ.value);
     state.stacks = 0; // stacks belong to one champion's passive
     const pruned = Engine.pruneBuild(DATA, state.champ, state.items);
     state.items = pruned.items;
@@ -147,7 +155,7 @@ function createPanel(container, side, onChange) {
     state.combo.push(ui.addStep.value === 'A' ? {autos: 1} : {spell: ui.addStep.value});
     render();
   });
-  ui.resetButton.addEventListener('click', () => { state.combo = Engine.DEFAULT_COMBO.map((s) => ({...s})); render(); });
+  ui.resetButton.addEventListener('click', () => { state.combo = Engine.defaultCombo(DATA, state.champ); render(); });
   ui.slots.forEach((s, i) => s.addEventListener('change', () => {
     state.items[i] = s.value || null;
     removedNotice = '';
@@ -296,7 +304,8 @@ function createPanel(container, side, onChange) {
           setItems: (items, gold) => { state.items = items.slice(); if (gold !== undefined) state.gold = gold; removedNotice = ''; render(); },
           // Load a whole build (from the rankings); rows are already legal for their champion.
           setBuild: (b) => {
-            Object.assign(state, {champ: b.champ, level: b.level, items: b.items.slice(), stacked: b.stacked, stacks: b.stacks,
+            switchChamp(b.champ);
+            Object.assign(state, {level: b.level, items: b.items.slice(), stacked: b.stacked, stacks: b.stacks,
               runes: Engine.normalizeRunePage(DATA, JSON.parse(JSON.stringify(b.runes)))});
             removedNotice = '';
             render();
@@ -336,18 +345,27 @@ function renderDamage(attackerPanel, targetPanel) {
         if (r.perHit && !li) notes.push(t('perHitNote', {spell: spellName}));
       }
       if (!li && count > 1 && r.learned && !r.noDamage) text += ` — ${t('comboLine')}`;
+      if (!li && r.learned) { // the spell's own heal, at your current health, from this damage
+        const h = Engine.spellHeal(DATA, side, spell.key,
+          {damage: r.unsupported.length ? 0 : r.damage, selfHp: aStats.total.hp * Engine.clampPct(a.currentHpPct) / 100});
+        if (h.unsupported.length || (h.fromDamage && r.unsupported.length)) text += ` · ${t('healCheck')}`;
+        else if (h.heal > 0) text += ` · ${t('healsFor', {hp: fmt(h.heal, 0)})}${h.perSecond ? ' ' + t('perSecond') : ''}`;
+      }
       rows.push(el('tr', {}, el('th', {scope: 'row', text: li ? '' : `${spell.key === 'P' ? t('passive') : spell.key}: ${nm(spell.name)}`}),
         el('td', {text: spell.key === 'P' || !r.learned || li ? '' : `${t('rank')} ${r.rank}`}), el('td', {text})));
     }
   }
 
-  const combo = Engine.runCombo(DATA, side, {champ: b.champ, stats: bStats, currentHpPct: b.currentHpPct}, a.combo);
+  const combo = Engine.runCombo(DATA, side, {champ: b.champ, stats: bStats, currentHpPct: b.currentHpPct, items: b.items}, a.combo);
   const noteText = (n) => n === 'kills' ? t('kills') : n === 'not_learned' ? t('notLearned') : n === 'no_damage' ? t('noDamage')
-    : n === 'excluded' ? '*' : n === 'per_hit' ? t('perHit') : sourceName(n.slice(n.indexOf(':') + 1));
+    : n === 'excluded' ? '*' : n === 'per_hit' ? t('perHit') : n === 'heal_excluded' ? t('healCheck')
+    : n === 'heal_per_second' ? t('healOneSecond') : n === 'heal_minimum' ? t('healMinimum')
+    : sourceName(n.slice(n.indexOf(':') + 1));
   const comboRows = combo.rows.map((r) => el('tr', {},
     el('td', {text: String(r.step)}),
     el('td', {text: r.label.startsWith('A×') ? `${t('autos')} ×${r.label.slice(2)}` : r.label}),
     el('td', {text: fmt(r.damage, 0)}), el('td', {text: fmt(r.hpAfter, 0)}),
+    ...(combo.healed > 0 ? [el('td', {text: r.healed > 0 ? '+' + fmt(r.healed, 0) : ''})] : []),
     el('td', {text: r.notes.map(noteText).join(', ')})));
   for (const f of combo.flags) {
     const [, kind, id] = f.split(':');
@@ -355,14 +373,20 @@ function renderDamage(attackerPanel, targetPanel) {
   }
   const summary = combo.killsAt ? t('killsAt', {n: combo.killsAt})
     : t('leaves', {hp: fmt(combo.hpLeft, 0), pct: fmt(100 * combo.hpLeft / maxHp)});
+  const heal = {hp: fmt(combo.healed, 0), used: fmt(combo.healedUsed, 0)};
+  if (combo.grievous > 0) notes.push(t('grievous', {champ: nm(champB.name), pct: fmt(100 * combo.grievous, 0)}));
+  const healText = !(combo.healed > 0) ? null : combo.healedUsed >= combo.healed - 0.5 ? t('heals', heal)
+    : combo.healedUsed < 0.5 ? t('healsFull', heal) : t('healsCapped', heal);
   const head = (...keys) => el('thead', {}, el('tr', {}, ...keys.map((k) => el('th', {scope: 'col', text: k ? t(k) : ''}))));
 
   attackerPanel.results.replaceChildren(
     el('h3', {text: t('damageTo', {champ: nm(champB.name)})}),
     el('table', {class: 'damage'}, el('tbody', {}, ...rows)),
     el('h3', {'data-k': 'combo', text: t('combo')}),
-    el('table', {class: 'damage'}, head('step', '', 'damage', 'hpLeft', ''), el('tbody', {}, ...comboRows)),
+    el('table', {class: 'damage'}, head('step', '', 'damage', 'hpLeft', ...(combo.healed > 0 ? ['healed'] : []), ''),
+      el('tbody', {}, ...comboRows)),
     el('p', {class: 'summary', text: summary}),
+    ...(healText ? [el('p', {class: 'summary', text: healText})] : []),
     ...[...new Set(notes)].map((n) => el('p', {class: 'notice', text: n})));
 }
 

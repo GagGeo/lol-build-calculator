@@ -27,7 +27,42 @@ const Engine = (() => {
   const pageRunes = (page) => [page.keystone, ...(page.primaryRunes || []), ...(page.secondaryRunes || [])]
     .filter((id) => id !== null && id !== undefined);
 
+  // Stats with the champion's own passive (rules.championPassiveStats). Its formulas read the stats
+  // without the passive (as the game's "avoiding recursion" formulas do), then the result is added.
   function championStats(data, sel) {
+    const entries = (data.rules.championPassiveStats || {})[sel.champ];
+    if (!entries) return coreStats(data, sel, null);
+    return coreStats(data, sel, passiveStats(data, sel, entries, coreStats(data, sel, null)));
+  }
+
+  function passiveStats(data, sel, entries, first) {
+    const champ = data.champions[sel.champ];
+    const spell = champ.spells.find((s) => s.key === 'P');
+    const level = clampLevel(sel.level);
+    // Bonus move speed for formulas = everything above base, after % bonuses and soft caps.
+    const stats = {...first, bonus: {...first.bonus, ms: first.total.ms - first.base.ms}};
+    const out = {add: {}, mul: [], ops: [], unsupported: []};
+    for (const e of entries) {
+      if (e.stacked !== undefined && e.stacked !== !!sel.stacked) continue;
+      if (e.op) { out.ops.push(e); continue; }
+      if (e.mulTotal !== undefined) { out.mul.push({stat: e.stat, value: e.mulTotal}); continue; }
+      let v;
+      if (e.calc) {
+        const r = evalCalc(spell, e.calc, {rank: 1, level, stats, rules: data.rules});
+        out.unsupported.push(...r.unsupported);
+        v = r.value;
+        if (e.ofTotal) v *= first.total[e.ofTotal] || 0;
+        else if ((spell.calcs[e.calc] || {}).pct) v *= 100; // fraction shown as a percentage
+        v *= e.mult ?? 1;
+      } else {
+        v = runeEntryValue(e, level);
+      }
+      if (e.asMulTotal) out.mul.push({stat: e.stat, value: v / 100}); else add(out.add, e.stat, v);
+    }
+    return out;
+  }
+
+  function coreStats(data, sel, passive) {
     const level = clampLevel(sel.level);
     const champ = data.champions[sel.champ];
     const b = champ.base;
@@ -79,10 +114,14 @@ const Engine = (() => {
     if (stacker && sel.stacks > 0) {
       for (const [k, v] of Object.entries(stacker)) {
         if (typeof v === 'number') add(bonus, k, v * sel.stacks);
+        else if (v.max !== undefined) add(bonus, k, Math.min(v.max, v.value * sel.stacks));
         else if (v.per) add(bonus, k, Math.floor(sel.stacks / v.per) * v.value);
         else if (v.byRRank) { const r = ultRank(level); if (r) add(bonus, k, v.byRRank[r - 1] * sel.stacks); }
       }
     }
+
+    const REGEN = ['hpregen', 'mpregen'];
+    for (const [k, v] of Object.entries(passive ? passive.add : {})) if (!REGEN.includes(k)) add(bonus, k, v);
 
     // Adaptive force: 1 AP or 0.6 AD, toward the larger bonus; ties follow the champion's type.
     const adaptive = bonus.adaptive || 0;
@@ -98,7 +137,7 @@ const Engine = (() => {
 
     // Item passives: multipliers first, then conversions (conversions are not multiplied).
     const passives = items.flatMap((id) => rules.itemStatPassives[id] || []);
-    for (const m of [...passives.filter((p) => p.op === 'mulTotal'), ...runeMuls]) {
+    for (const m of [...passives.filter((p) => p.op === 'mulTotal'), ...runeMuls, ...(passive ? passive.mul : [])]) {
       total[m.stat] = (total[m.stat] || 0) * (1 + m.value);
     }
     for (const c of passives.filter((p) => p.op === 'convert')) {
@@ -107,6 +146,16 @@ const Engine = (() => {
           : c.basis === 'base' ? base[c.from] || 0 : bonus[c.from] || 0;
       total[c.to] = (total[c.to] || 0) + source * c.value;
     }
+    for (const o of passive ? passive.ops : []) {
+      if (o.op === 'convertBonus') { // Pyke: bonus Health becomes Attack Damage
+        const moved = total[o.from] - (base[o.from] || 0);
+        total[o.from] -= moved;
+        total[o.to] = (total[o.to] || 0) + moved / o.per;
+      } else if (o.op === 'intent') { // Yasuo, Yone: crit chance doubled, crit above 100% becomes AD
+        total.crit = (total.crit || 0) * o.critMul;
+        if (total.crit > 100) total.ad += (total.crit - 100) * o.adPerExcessCrit;
+      }
+    }
     for (const k of Object.keys(total)) {
       if (BASE_KEYS.includes(k) || k === 'ap') bonus[k] = total[k] - (base[k] || 0);
     }
@@ -114,6 +163,7 @@ const Engine = (() => {
     // Base Health/Mana Regen % multiplies the champion's base regen only.
     total.hpregen = base.hpregen * (1 + (bonus.hpRegenPct || 0) / 100) + (fromItems.hpregen || 0);
     total.mpregen = base.mpregen * (1 + (bonus.mpRegenPct || 0) / 100) + (fromItems.mpregen || 0);
+    for (const k of REGEN) total[k] += (passive && passive.add[k]) || 0;
     bonus.hpregen = total.hpregen - base.hpregen;
     bonus.mpregen = total.mpregen - base.mpregen;
     if (total.crit !== undefined) total.crit = Math.min(100, total.crit);
@@ -123,11 +173,13 @@ const Engine = (() => {
     if (ms > 490) ms = 415 + 75 * 0.8 + (ms - 490) * 0.5;
     else if (ms > 415) ms = 415 + (ms - 415) * 0.8;
     total.ms = ms;
-    total.range = b.range;
+    total.range = b.range + (bonus.range || 0);
 
     const flags = items.filter((id) => (rules.itemStatPassivesUnknown || []).includes(id))
       .map((id) => 'unknown_passive:' + id);
-    if ((rules.championStatsUnknown || []).includes(sel.champ)) flags.push('unknown_champion:' + sel.champ);
+    if ((rules.championStatsUnknown || []).includes(sel.champ) || (passive && passive.unsupported.length)) {
+      flags.push('unknown_champion:' + sel.champ);
+    }
     return {base, bonus, total, flags};
   }
 
@@ -252,13 +304,18 @@ const Engine = (() => {
       switch (n.t) {
         case 'v': {
           const arr = spell.values[n.name];
-          return arr && arr.length ? arr[Math.min(ctx.rank, arr.length - 1)] : 0;
+          if (!arr || !arr.length) { unsupported.push('missing value ' + n.name); return 0; } // never a silent 0
+          return arr[Math.min(ctx.rank, arr.length - 1)];
         }
         case 'n': return n.n;
         case 'stat': return formulaStat(n.stat, n.basis, ctx.stats, ctx.rules) * node(n.coef);
         case 'statOf': return formulaStat(n.stat, n.basis, ctx.stats, ctx.rules) * node(n.part);
-        case 'lvlBp': return n.start + n.bps.reduce((sum, [at, add, perLevel]) =>
-          sum + (ctx.level >= at ? add + (perLevel || 0) * (ctx.level - at + 1) : 0), 0);
+        // Each breakpoint adds once at its level; its per-level rate runs until the next breakpoint.
+        case 'lvlBp': return n.start + n.bps.reduce((sum, [at, add, perLevel], i) => {
+          if (ctx.level < at) return sum;
+          const last = Math.min(ctx.level, i + 1 < n.bps.length ? n.bps[i + 1][0] - 1 : ctx.level);
+          return sum + add + (perLevel || 0) * (last - at + 1);
+        }, 0);
         case 'lvlLerp': return n.a + (n.b - n.a) * (ctx.level - 1) / 17;
         case 'sum': return n.parts.reduce((s, p) => s + node(p), 0);
         case 'prod': return node(n.a) * node(n.b);
@@ -318,7 +375,8 @@ const Engine = (() => {
   function spellDamage(data, side, target, key, lineIndex = 0, shred = {armor: 0, mr: 0}) {
     const champ = data.champions[side.champ];
     const spell = champ.spells.find((s) => s.key === key);
-    const rank = key === 'P' ? 1 : skillRanks(champ, side.level, side.priority)[key];
+    const rank = key === 'P' ? (clampLevel(side.level) >= ((data.rules.passiveFromLevel || {})[side.champ] || 1) ? 1 : 0)
+      : skillRanks(champ, side.level, side.priority)[key];
     if (!rank) return {learned: false, rank: 0, raw: 0, damage: 0, type: null, unsupported: []};
     // A spell whose description or game data is missing can't be trusted, even if some lines were read.
     const unsupported = spell.flags.filter((f) => ['unparsed_tooltip', 'no_tooltip', 'no_cdragon_spell'].includes(f));
@@ -333,17 +391,7 @@ const Engine = (() => {
     let raw = 0;
     if (line.varies) unsupported.push('damage varies with missing health');
     for (const term of line.terms) {
-      let v, pct = false;
-      if (term.calc) {
-        const r = evalCalc(spell, term.calc, ctx);
-        unsupported.push(...r.unsupported);
-        v = r.value;
-        pct = !!(spell.calcs[term.calc] || {}).pct;
-      } else {
-        const arr = spell.values[term.value] || [];
-        v = arr.length ? arr[Math.min(rank, arr.length - 1)] : 0;
-      }
-      v *= term.mult ?? 1;
+      const {v, pct} = termValue(spell, term, ctx, unsupported);
       if (term.kind === 'unsupported') { unsupported.push('percentage of another base'); continue; }
       if (term.kind === 'flat') { raw += v; continue; }
       // Target-health terms: the number shown is a percentage when the description adds "%" or the
@@ -357,7 +405,63 @@ const Engine = (() => {
             perHit: !!line.perHit};
   }
 
+  // One damage or heal term's number at this rank: {v, pct} (pct: the game's formula is a fraction shown as %).
+  function termValue(spell, term, ctx, unsupported) {
+    let v, pct = false;
+    if (term.n !== undefined) v = term.n;
+    else if (term.calc) {
+      const r = evalCalc(spell, term.calc, ctx);
+      unsupported.push(...r.unsupported);
+      v = r.value;
+      pct = !!(spell.calcs[term.calc] || {}).pct;
+    } else {
+      const arr = spell.values[term.value] || [];
+      if (!arr.length) unsupported.push('missing value ' + term.value);
+      v = arr.length ? arr[Math.min(ctx.rank, arr.length - 1)] : 0;
+    }
+    return {v: v * (term.mult ?? 1), pct};
+  }
+
+  // Self-heal of one spell's first heal line. o.damage: the damage this spell just dealt (for "% of damage
+  // dealt"); o.selfHp: your health now (default full). Heal and Shield Power applies; Grievous Wounds doesn't
+  // (runCombo applies it).
+  function spellHeal(data, side, key, o = {}) {
+    const champ = data.champions[side.champ];
+    const spell = champ.spells.find((s) => s.key === key);
+    const none = {heal: 0, unsupported: []};
+    const rank = key === 'P' ? (clampLevel(side.level) >= ((data.rules.passiveFromLevel || {})[side.champ] || 1) ? 1 : 0)
+      : skillRanks(champ, side.level, side.priority)[key];
+    const line = rank && (spell.heals || [])[0];
+    if (!line) return none;
+    if (((data.rules.spellHealsNotInCombo || {})[`${side.champ} ${key}`])) return {...none, skipped: true};
+    if ((data.rules.spellHealsUnknown || {})[`${side.champ} ${key}`]) return {...none, unsupported: ['heal not readable']};
+    const unsupported = [];
+    const ctx = {rank, level: clampLevel(side.level), stats: side.stats, rules: data.rules};
+    const maxHp = side.stats.total.hp || 0, selfHp = o.selfHp ?? maxHp;
+    let heal = 0;
+    for (const term of line.terms) {
+      const {v, pct} = termValue(spell, term, ctx, unsupported);
+      if (term.kind === 'unsupported') { unsupported.push('heal from another base'); continue; }
+      if (term.kind === 'flat') { heal += v; continue; }
+      if (!term.percent && !pct) { unsupported.push('heal percentage without a percentage'); continue; }
+      const frac = pct && !term.percent ? v : pct ? v : v / 100;
+      heal += frac * (term.kind === 'selfMax' ? maxHp : term.kind === 'selfMissing' ? maxHp - selfHp
+        : term.kind === 'selfCurrent' ? selfHp : o.damage || 0);
+    }
+    return {heal: heal * (1 + (side.stats.total.hsp || 0) / 100), unsupported, perSecond: !!line.perSecond,
+            minimum: !!line.minimum, fromDamage: line.terms.some((t) => t.kind === 'damageDealt')};
+  }
+
   const DEFAULT_COMBO = [{spell: 'Q'}, {spell: 'W'}, {spell: 'E'}, {autos: 3}, {spell: 'R'}];
+
+  // The default combo, plus the passive right after the autos when it deals damage in a normal fight.
+  function defaultCombo(data, champId) {
+    const champ = data.champions[champId];
+    const p = champ && champ.spells.find((s) => s.key === 'P');
+    const steps = DEFAULT_COMBO.map((s) => ({...s}));
+    if (p && p.lines.length && !(data.rules.passiveNotInCombo || []).includes(champId)) steps.splice(4, 0, {spell: 'P'});
+    return steps;
+  }
 
   const clampPct = (v) => {
     if (v === '' || v === null || v === undefined) return 100;
@@ -429,11 +533,30 @@ const Engine = (() => {
       }
       return f;
     };
+    // Healing: life steal on basic attacks and their on-hit effects, omnivamp on all damage; damage past the
+    // target's remaining health heals nothing. Grievous Wounds and healing from spells, runes and items are not counted.
+    // Your own health starts at your "Current health %"; healing past your max is wasted (healedUsed).
+    // Grievous Wounds: the target's strongest anti-heal item cuts all your healing.
+    const lifesteal = (a.total.lifesteal || 0) / 100, omnivamp = (a.total.omnivamp || 0) / 100;
+    const grievous = Math.max(0, ...(target.items || []).filter(Boolean).map((id) => (rules.grievousWounds || {})[id] || 0));
+    const selfMax = a.total.hp || 0;
+    let selfHp = selfMax * clampPct(attacker.currentHpPct) / 100;
+    let healed = 0, healedUsed = 0, stepHealed = 0;
+    const gain = (h) => {
+      h *= 1 - grievous;
+      const used = Math.min(h, Math.max(0, selfMax - selfHp));
+      healed += h; healedUsed += used; stepHealed += h; selfHp += used;
+    };
+    const hit = (dmg, source) => {
+      const landed = Math.min(dmg, Math.max(0, hp));
+      gain(landed * (omnivamp + (source === 'auto' ? lifesteal : 0)));
+      hp -= dmg;
+    };
     // One damage instance: mitigate with the running shred, amplify, subtract; returns the damage dealt.
     const deal = (raw, type, source) => {
       const t = type === 'adaptive' ? adaptiveType() : type;
       const dmg = mitigate(raw, t, a, target.stats, shred) * ampFactor(source, t);
-      hp -= dmg;
+      hit(dmg, source);
       return {dmg, type: t};
     };
     const afterHit = (type, notes) => {
@@ -459,8 +582,10 @@ const Engine = (() => {
       if (killsAt !== null) return;
       const notes = [];
       let damage = 0;
+      stepHealed = 0;
       hpAtHit = hp;
       if (step.spell) {
+        const hpBefore = hp;
         const r = spellDamage(data, attacker, {stats: target.stats, currentHp: hp}, step.spell, 0, shred);
         if (!r.learned) notes.push('not_learned');
         else if (r.unsupported.length) { notes.push('excluded'); excluded.push(step.spell); spellbladeReady = true; }
@@ -468,7 +593,7 @@ const Engine = (() => {
         else {
           if (r.perHit) notes.push('per_hit');
           const f = ampFactor('spell', r.type);
-          hp -= r.damage * f;
+          hit(r.damage * f, 'spell');
           damage += r.damage * f;
           damage += afterHit(r.type, notes);
           applyShred(r.type);
@@ -476,6 +601,17 @@ const Engine = (() => {
           if (!afterSpellDone) {
             for (const e of of('afterSpell')) { damage += deal(effectRaw(e), e.type, 'effect').dmg; notes.push('effect:' + e.source); }
             afterSpellDone = true;
+          }
+        }
+        if (r.learned) {
+          // The spell's own heal, from the spell damage that landed (not item or rune procs).
+          const landed = r.unsupported.length || r.noDamage ? 0 : Math.min(r.damage * ampFactor('spell', r.type), Math.max(0, hpBefore));
+          const h = spellHeal(data, attacker, step.spell, {damage: landed, selfHp});
+          if (h.unsupported.length || (h.fromDamage && r.unsupported.length)) notes.push('heal_excluded');
+          else if (h.heal > 0) {
+            gain(h.heal);
+            if (h.perSecond) notes.push('heal_per_second');
+            if (h.minimum) notes.push('heal_minimum');
           }
         }
       } else {
@@ -501,9 +637,9 @@ const Engine = (() => {
         }
       }
       if (hp <= 0 && killsAt === null) { killsAt = i + 1; notes.push('kills'); }
-      rows.push({step: i + 1, label: step.spell || 'A×' + step.autos, damage, hpAfter: Math.max(0, hp), notes});
+      rows.push({step: i + 1, label: step.spell || 'A×' + step.autos, damage, hpAfter: Math.max(0, hp), healed: stepHealed, notes});
     });
-    return {rows, hpStart, hpLeft: Math.max(0, hp), killsAt, excluded, flags};
+    return {rows, hpStart, hpLeft: Math.max(0, hp), killsAt, excluded, flags, healed, healedUsed, grievous};
   }
 
   // --- Stage 3: the shop ------------------------------------------------------------------------
@@ -545,8 +681,10 @@ const Engine = (() => {
     const enemyStats = championStats(data, enemy);
     const score = (items) => {
       const stats = championStats(data, {...you, items});
-      const mine = runCombo(data, {...you, items, stats}, {champ: enemy.champ, stats: enemyStats, currentHpPct: enemy.currentHpPct}, you.combo);
-      const theirs = runCombo(data, {...enemy, stats: enemyStats}, {champ: you.champ, stats, currentHpPct: you.currentHpPct}, enemy.combo);
+      const mine = runCombo(data, {...you, items, stats}, {champ: enemy.champ, stats: enemyStats, currentHpPct: enemy.currentHpPct,
+        items: enemy.items}, you.combo);
+      const theirs = runCombo(data, {...enemy, stats: enemyStats}, {champ: you.champ, stats, currentHpPct: you.currentHpPct, items},
+        enemy.combo);
       return {hpLeft: mine.hpLeft, killsAt: mine.killsAt, yourHpLeft: theirs.hpLeft, enemyKillsAt: theirs.killsAt};
     };
     const baseline = score(you.items);
@@ -764,7 +902,7 @@ const Engine = (() => {
 
   return {RANKABLE_STATS, bestBuilds, bestRunePage, rankStat, adviseBuys, rankBuys, purchase, growth, clampLevel, championStats, ultRank, validateBuild, allowedItems, pruneBuild,
           validateRunePage, normalizeRunePage, buildCost, goldWarning, evalCalc, skillRanks,
-          mitigate, autoAttack, spellDamage, runCombo, DEFAULT_COMBO, clampPct};
+          mitigate, autoAttack, spellDamage, runCombo, DEFAULT_COMBO, defaultCombo, clampPct, spellHeal};
 })();
 
 if (typeof module === 'object') module.exports = Engine;
