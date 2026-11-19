@@ -38,7 +38,7 @@
   select { width: 100%; min-width: 0; }
 
   [hidden] { display: none !important; } /* .panel's display: grid would otherwise show hidden tab panels */
-  .tabs { max-width: 1200px; margin: 0 auto 12px; padding: 0 16px; display: flex; gap: 8px; }
+  .tabs { max-width: 1200px; margin: 0 auto 12px; padding: 0 16px; display: flex; gap: 8px; flex-wrap: wrap; }
   .tabs button { color: var(--muted); border-color: var(--line); }
   .tabs button[aria-selected="true"] { color: var(--gold); border-color: var(--gold); font-weight: 600; }
   .rank-form { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 0 14px; }
@@ -62,6 +62,22 @@
   .item-card { border: 1px solid var(--line); border-radius: 8px; padding: 12px 16px; margin-bottom: 16px; }
   .item-card h3 { margin-top: 0; }
   .item-desc { white-space: pre-line; }
+  a { color: var(--gold); }
+  .guide-jump { display: flex; flex-wrap: wrap; gap: 4px 14px; margin: 0; }
+  .guide-cards { display: grid; gap: 12px; grid-template-columns: repeat(auto-fill, minmax(min(100%, 460px), 1fr)); }
+  .guide-cards .item-card { margin: 0; scroll-margin-top: 12px; }
+  .guide-cards ul, .sources ul { margin: 4px 0 8px; padding-left: 1.2em; }
+  .guide-try { border-top: 1px solid var(--line); margin-top: 10px; padding-top: 4px; }
+  .guide-row { display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr) 4.5em; gap: 4px 10px; align-items: center; }
+  .guide-row label { margin: 4px 0; }
+  .guide-row input { accent-color: var(--teal); padding: 0; border: 0; background: none; }
+  .guide-row output { text-align: right; font-variant-numeric: tabular-nums; }
+  .guide-row output.strong { color: var(--gold); font-weight: 600; }
+  .guide-bar { height: 10px; background: var(--deep); border-radius: 3px; overflow: hidden; }
+  .guide-bar span { display: block; height: 100%; background: var(--teal); }
+  .sources section + section { margin-top: 8px; }
+  .guide-cards h4 { margin: 0 0 4px; font-size: 19px; font-weight: 600; }
+  .guide-label { margin: 8px 0 2px; color: var(--muted); font-weight: 600; }
   @media (min-width: 1100px) { #panels { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); } }
   .panel {
     background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 16px;
@@ -127,6 +143,8 @@
   <button type="button" role="tab" id="tab-rankings" aria-controls="rankings"></button>
   <button type="button" role="tab" id="tab-optimize" aria-controls="optimize"></button>
   <button type="button" role="tab" id="tab-items" aria-controls="items"></button>
+  <button type="button" role="tab" id="tab-guide" aria-controls="guide"></button>
+  <button type="button" role="tab" id="tab-sources" aria-controls="sources"></button>
 </nav>
 <main>
   <div id="calculator" role="tabpanel" aria-labelledby="tab-calculator">
@@ -136,11 +154,14 @@
   <section id="rankings" class="panel" role="tabpanel" aria-labelledby="tab-rankings" hidden></section>
   <section id="optimize" class="panel" role="tabpanel" aria-labelledby="tab-optimize" hidden></section>
   <section id="items" class="panel" role="tabpanel" aria-labelledby="tab-items" hidden></section>
+  <section id="guide" class="panel" role="tabpanel" aria-labelledby="tab-guide" hidden></section>
+  <section id="sources" class="panel" role="tabpanel" aria-labelledby="tab-sources" hidden></section>
 </main>
 <footer data-t="disclaimer"></footer>
 <script src="data.js?v=e43ef9bf90"></script>
-<script src="engine.js?v=349e963588"></script>
-<script src="i18n.js?v=71cb23b317"></script>
-<script src="app.js?v=748c37e217"></script>
+<script src="engine.js?v=ffc2f765df"></script>
+<script src="guide.js?v=1091b04ade"></script>
+<script src="i18n.js?v=3a0b69a56d"></script>
+<script src="app.js?v=78310a7391"></script>
 </body>
 </html>

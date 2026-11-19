@@ -4,6 +4,9 @@ const Engine = (() => {
 
   const growth = (level) => (level - 1) * (0.7025 + 0.0175 * (level - 1));
 
+  // Move speed soft caps: 80% of the speed above 415 counts, 50% above 490.
+  const capMoveSpeed = (ms) => (ms > 490 ? 415 + 75 * 0.8 + (ms - 490) * 0.5 : ms > 415 ? 415 + (ms - 415) * 0.8 : ms);
+
   const clampLevel = (level) => {
     const n = Math.round(Number(level));
     return Number.isFinite(n) ? Math.min(18, Math.max(1, n)) : 1;
@@ -169,10 +172,7 @@ const Engine = (() => {
     if (total.crit !== undefined) total.crit = Math.min(100, total.crit);
     if (total.tenacity !== undefined) total.tenacity = Math.min(100, total.tenacity);
     total.as = Math.min(rules.asCap, b.as + b.asratio * ((bonus.as || 0) / 100 + (b.asperlevel / 100) * g));
-    let ms = (b.ms + (bonus.ms || 0)) * (1 + (bonus.msPct || 0) / 100);
-    if (ms > 490) ms = 415 + 75 * 0.8 + (ms - 490) * 0.5;
-    else if (ms > 415) ms = 415 + (ms - 415) * 0.8;
-    total.ms = ms;
+    total.ms = capMoveSpeed((b.ms + (bonus.ms || 0)) * (1 + (bonus.msPct || 0) / 100));
     total.range = b.range + (bonus.range || 0);
 
     const flags = items.filter((id) => (rules.itemStatPassivesUnknown || []).includes(id))
@@ -982,7 +982,7 @@ const Engine = (() => {
     return {value, efficiency: item.gold.total > 0 ? value / item.gold.total : null, unpriced};
   }
 
-  return {RANKABLE_STATS, bestBuilds, bestRunePage, rankStat, optimizeChampion, statBreakdown, statGoldPrices, goldEfficiency, adviseBuys, rankBuys, purchase, growth, clampLevel, championStats, ultRank, validateBuild, allowedItems, pruneBuild,
+  return {RANKABLE_STATS, bestBuilds, bestRunePage, rankStat, optimizeChampion, statBreakdown, statGoldPrices, goldEfficiency, adviseBuys, rankBuys, purchase, growth, capMoveSpeed, clampLevel, championStats, ultRank, validateBuild, allowedItems, pruneBuild,
           validateRunePage, normalizeRunePage, buildCost, goldWarning, evalCalc, skillRanks,
           mitigate, autoAttack, spellDamage, runCombo, DEFAULT_COMBO, defaultCombo, clampPct, spellHeal};
 })();

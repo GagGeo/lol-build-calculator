@@ -841,9 +841,72 @@ function createItemsTab(section) {
 }
 let itemsTab = null;
 
+// "Stats explained" tab: one card per stat (what it does, what it works with) and live examples computed with
+// the calculator's own formulas (guide.js). Slider positions survive a language switch.
+const pick = (text) => text[lang] || text.en;
+const outLink = (url, text) => el('a', {href: url, target: '_blank', rel: 'noopener', text});
+function createGuideTab(section) {
+  const values = {};
+  function example(card) {
+    const ex = GUIDE.EXAMPLES[card.example];
+    const v = values[card.key] || (values[card.key] = Object.fromEntries(ex.inputs.map((i) => [i.key, i.value])));
+    const rows = el('div'), note = el('p', {class: 'note'});
+    const update = () => {
+      const r = ex.run(v, DATA.rules);
+      rows.replaceChildren(...r.rows.map((row) => {
+        const pct = Math.max(0, Math.min(100, 100 * row.value / row.max));
+        return el('div', {class: 'guide-row'}, el('span', {text: pick(row)}),
+          el('div', {class: 'guide-bar'}, el('span', {style: `width: ${pct}%`})),
+          el('output', {class: row.strong ? 'strong' : '', text: fmt(row.value, row.digits || 0) + (row.unit || '')}));
+      }));
+      note.textContent = pick(r.note(fmt));
+    };
+    const inputs = ex.inputs.map((inp) => {
+      const id = `guide-${card.key}-${inp.key}`;
+      const range = el('input', {type: 'range', id, min: inp.min, max: inp.max, step: inp.step, value: v[inp.key]});
+      const out = el('output', {for: id});
+      const show = () => { out.textContent = fmt(v[inp.key], 0) + (inp.unit || ''); };
+      range.addEventListener('input', () => { v[inp.key] = Number(range.value); show(); update(); });
+      show();
+      return el('div', {class: 'guide-row'}, el('label', {for: id, text: pick(inp)}), range, out);
+    });
+    update();
+    return el('div', {class: 'guide-try'}, el('p', {class: 'guide-label', text: t('guideExample')}), ...inputs, rows, note);
+  }
+  function render() {
+    const cards = GUIDE.GROUPS.map((group) => [el('h3', {text: pick(group)}), el('div', {class: 'guide-cards'},
+      ...group.stats.map((card) => el('article', {class: 'item-card', id: 'guide-' + card.key},
+        el('h4', {text: t('stat_' + card.key)}), el('p', {text: pick(card.what)}),
+        el('p', {class: 'guide-label', text: t('guideWith')}), el('ul', {}, ...card.with.map((w) => el('li', {text: pick(w)}))),
+        ...(card.example ? [example(card)] : []),
+        el('p', {class: 'note'}, outLink(GUIDE.WIKI + card.wiki, t('guideWiki'))))))]);
+    const jump = GUIDE.GROUPS.flatMap((g) => g.stats).map((c) => el('a', {href: '#guide-' + c.key, text: t('stat_' + c.key)}));
+    section.replaceChildren(el('h2', {text: t('guideTitle')}), el('div', {},
+      el('p', {text: t('guideIntro')}), el('nav', {class: 'guide-jump'}, ...jump), ...cards.flat()));
+  }
+  render();
+  return {setLang: render};
+}
+let guideTab = null;
+
+// "Sources" tab: where the data and formulas come from, with links.
+function createSourcesTab(section) {
+  const minor = DATA.patch.split('.').slice(0, 2).join('.');
+  const url = (u) => u.replace('{patch}', DATA.patch).replace('{minor}', minor);
+  function render() {
+    section.replaceChildren(el('h2', {text: t('sourcesTitle')}), el('div', {class: 'sources'},
+      el('p', {text: t('sourcesIntro', {patch: DATA.patch})}),
+      ...GUIDE.SOURCES.map((s) => el('section', {}, el('h3', {text: pick(s.title)}), el('p', {text: pick(s.text)}),
+        el('ul', {}, ...s.links.map((l) => el('li', {}, outLink(url(l.url), pick(l)))))))));
+  }
+  render();
+  return {setLang: render};
+}
+let sourcesTab = null;
+
 // Tabs: the calculator (panels + advisor), the rankings and the champion optimizer. The choice is remembered.
 // Only tabs present in the page: a cached older index.html next to a newer app.js must not break the page.
-const TABS = ['calculator', 'rankings', 'optimize', 'items'].filter((id) => document.getElementById(id) && document.getElementById('tab-' + id));
+const TABS = ['calculator', 'rankings', 'optimize', 'items', 'guide', 'sources'].filter((id) => document.getElementById(id) && document.getElementById('tab-' + id));
 function showTab(name) {
   for (const [tab, panel] of TABS.map((x) => [x, x])) {
     const selected = tab === name;
@@ -883,10 +946,14 @@ function renderPage() {
   if (rankings) rankings.setLang();
   if (optimizer) optimizer.setLang();
   if (itemsTab) itemsTab.setLang();
+  if (guideTab) guideTab.setLang();
+  if (sourcesTab) sourcesTab.setLang();
   document.getElementById('tab-calculator').textContent = t('tabCalculator');
   document.getElementById('tab-rankings').textContent = t('tabRankings');
   if (optimizer) document.getElementById('tab-optimize').textContent = t('tabOptimize');
   if (itemsTab) document.getElementById('tab-items').textContent = t('tabItems');
+  if (guideTab) document.getElementById('tab-guide').textContent = t('tabGuide');
+  if (sourcesTab) document.getElementById('tab-sources').textContent = t('tabSources');
   addEnemyButton.textContent = t('addEnemy');
 }
 
@@ -909,6 +976,8 @@ setEnemyShown(enemyShown);
 rankings = createRankings(document.getElementById('rankings'));
 if (TABS.includes('optimize')) optimizer = createOptimizer(document.getElementById('optimize'));
 if (TABS.includes('items')) itemsTab = createItemsTab(document.getElementById('items'));
+if (TABS.includes('guide') && typeof GUIDE === 'object') guideTab = createGuideTab(document.getElementById('guide'));
+if (TABS.includes('sources') && typeof GUIDE === 'object') sourcesTab = createSourcesTab(document.getElementById('sources'));
 TABS.forEach((name, i) => {
   const tab = document.getElementById('tab-' + name);
   tab.addEventListener('click', () => showTab(name));
