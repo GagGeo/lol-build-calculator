@@ -931,7 +931,58 @@ const Engine = (() => {
     return {rows: rows.slice(0, count), ms: Date.now() - t0};
   }
 
-  return {RANKABLE_STATS, bestBuilds, bestRunePage, rankStat, optimizeChampion, adviseBuys, rankBuys, purchase, growth, clampLevel, championStats, ultRank, validateBuild, allowedItems, pruneBuild,
+  // Where the bonus stats come from: one column per item, then the runes, then the champion (passive and
+  // stacks). Each column is what the stats lose without it, so a multiplier (Rabadon) counts its share of
+  // everything; `notAdditive` lists stats whose columns then don't add up to the total exactly.
+  // Attack speed is in bonus % (as the stats table shows it); every other stat is its total.
+  function statBreakdown(data, sel) {
+    const items = sel.items || [];
+    const full = championStats(data, sel);
+    const keys = [...new Set([...Object.keys(full.total), ...Object.keys(full.bonus)])];
+    const val = (s, k) => (k === 'as' ? s.bonus.as || 0 : s.total[k] || 0);
+    const lost = (without) => Object.fromEntries(keys.map((k) => [k, val(full, k) - val(without, k)])
+      .filter(([, v]) => Math.abs(v) > 1e-9));
+    const columns = items.map((id, slot) => id && {kind: 'item', id, slot,
+      values: lost(championStats(data, {...sel, items: items.map((x, i) => (i === slot ? null : x))}))}).filter(Boolean);
+    columns.push({kind: 'runes', values: lost(championStats(data, {...sel, runes: null}))});
+    const noPassive = {...data, rules: {...data.rules,
+      championPassiveStats: {...(data.rules.championPassiveStats || {}), [sel.champ]: undefined}}};
+    columns.push({kind: 'champion', values: lost(championStats(noPassive, {...sel, stacks: 0}))});
+    const notAdditive = keys.filter((k) => {
+      const sum = columns.reduce((t, c) => t + (c.values[k] || 0), 0);
+      return Math.abs((k === 'as' ? 0 : full.base[k] || 0) + sum - val(full, k)) > 0.05;
+    });
+    return {columns, notAdditive, stats: full};
+  }
+
+  // Gold per point of each stat, from the cheapest basic item (no components) that gives only that stat.
+  const priceCache = new WeakMap();
+  function statGoldPrices(data) {
+    if (priceCache.has(data)) return priceCache.get(data);
+    const prices = {};
+    for (const item of Object.values(data.items)) {
+      const keys = Object.keys(item.stats);
+      if (keys.length !== 1 || (item.from || []).length || !(item.gold.total > 0)) continue;
+      const g = item.gold.total / item.stats[keys[0]];
+      if (!(keys[0] in prices) || g < prices[keys[0]]) prices[keys[0]] = g;
+    }
+    priceCache.set(data, prices);
+    return prices;
+  }
+
+  // An item's stats in gold (at those prices) over its cost. Stats without a price are listed in `unpriced`;
+  // passives are not priced.
+  function goldEfficiency(data, id) {
+    const item = data.items[id], prices = statGoldPrices(data);
+    let value = 0;
+    const unpriced = [];
+    for (const [k, v] of Object.entries(item.stats)) {
+      if (k in prices) value += v * prices[k]; else unpriced.push(k);
+    }
+    return {value, efficiency: item.gold.total > 0 ? value / item.gold.total : null, unpriced};
+  }
+
+  return {RANKABLE_STATS, bestBuilds, bestRunePage, rankStat, optimizeChampion, statBreakdown, statGoldPrices, goldEfficiency, adviseBuys, rankBuys, purchase, growth, clampLevel, championStats, ultRank, validateBuild, allowedItems, pruneBuild,
           validateRunePage, normalizeRunePage, buildCost, goldWarning, evalCalc, skillRanks,
           mitigate, autoAttack, spellDamage, runCombo, DEFAULT_COMBO, defaultCombo, clampPct, spellHeal};
 })();

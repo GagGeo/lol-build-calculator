@@ -28,21 +28,43 @@ const fmt = (n, digits = 1) => {
   return r.toLocaleString(lang === 'fr' ? 'fr-FR' : 'en-US', {maximumFractionDigits: digits});
 };
 
-// Stat / base / bonus / total rows of one championStats result into a <table>.
-function fillStatsTable(table, champ, s) {
-  const head = el('tr', {}, ...['stat', 'base', 'bonus', 'total'].map((k) => el('th', {scope: 'col', text: t(k)})));
-  // Mana only means something for mana users; energy users get it relabelled; other resources are hidden.
-  const resource = DATA.champions[champ].resource;
-  const shown = (k) => k !== 'mp' || resource === 'Mana' || resource === 'Energy';
-  const rows = STAT_ORDER.filter((k) => shown(k) && ((s.base[k] || 0) || (s.bonus[k] || 0) || (s.total[k] || 0))).map((k) => {
-    const digits = k === 'as' ? 3 : 1;
-    const baseV = s.base[k] ? fmt(s.base[k], digits) : '';
-    const bonusV = s.bonus[k] ? (k === 'as' ? fmt(s.bonus[k]) + '%' : '+' + fmt(s.bonus[k])) : '';
-    const statName = k === 'mp' && resource === 'Energy' ? t('stat_energy') : t('stat_' + k);
-    return el('tr', {}, el('th', {scope: 'row', text: statName}), el('td', {text: baseV}),
-      el('td', {text: bonusV}), el('td', {class: 'total', text: fmt(s.total[k] ?? 0, digits)}));
-  });
-  table.replaceChildren(el('thead', {}, head), el('tbody', {}, ...rows));
+// The stats table (stat, base, bonus, total) with a Show/Hide details button: details split the bonus into
+// one column per item, the runes and the champion (see Engine.statBreakdown). Hidden by default.
+function createStatsView() {
+  let detailed = false, last = null;
+  const toggle = el('button', {type: 'button', class: 'details-toggle'});
+  const table = el('table'), note = el('p', {class: 'note'});
+  const node = el('div', {}, toggle, el('div', {class: 'table-scroll'}, table), note);
+  toggle.addEventListener('click', () => { detailed = !detailed; render(last); });
+
+  function render(sel) {
+    last = sel;
+    toggle.textContent = t(detailed ? 'hideDetails' : 'showDetails');
+    toggle.setAttribute('aria-expanded', String(detailed));
+    const breakdown = detailed ? Engine.statBreakdown(DATA, sel) : null;
+    const s = breakdown ? breakdown.stats : Engine.championStats(DATA, sel);
+    const cols = breakdown ? breakdown.columns.filter((c) => c.kind === 'item' || Object.keys(c.values).length) : [];
+    const colName = (c) => (c.kind === 'item' ? nm(DATA.items[c.id].name) : t(c.kind === 'runes' ? 'runes' : 'champion'));
+    const head = el('tr', {}, ...[t('stat'), t('base'), ...(breakdown ? cols.map(colName) : [t('bonus')]), t('total')]
+      .map((text) => el('th', {scope: 'col', text})));
+    // Mana only means something for mana users; energy users get it relabelled; other resources are hidden.
+    const resource = DATA.champions[sel.champ].resource;
+    const shown = (k) => k !== 'mp' || resource === 'Mana' || resource === 'Energy';
+    const signed = (k, v) => (!v || Math.abs(v) < 1e-9 ? '' : k === 'as' ? fmt(v) + '%' : (v > 0 ? '+' : '') + fmt(v, k === 'as' ? 3 : 1));
+    const keys = STAT_ORDER.filter((k) => shown(k) && ((s.base[k] || 0) || (s.bonus[k] || 0) || (s.total[k] || 0)));
+    const rows = keys.map((k) => {
+      const digits = k === 'as' ? 3 : 1;
+      const statName = k === 'mp' && resource === 'Energy' ? t('stat_energy') : t('stat_' + k);
+      const middle = breakdown ? cols.map((c) => el('td', {text: signed(k, c.values[k])})) : [el('td', {text: signed(k, s.bonus[k])})];
+      return el('tr', {}, el('th', {scope: 'row', text: statName}), el('td', {text: s.base[k] ? fmt(s.base[k], digits) : ''}),
+        ...middle, el('td', {class: 'total', text: fmt(s.total[k] ?? 0, digits)}));
+    });
+    table.replaceChildren(el('thead', {}, head), el('tbody', {}, ...rows));
+    const odd = breakdown ? breakdown.notAdditive.filter((k) => keys.includes(k)) : [];
+    note.textContent = !breakdown ? '' : odd.length
+      ? t('detailsNotAdditive', {stats: odd.map((k) => t('stat_' + k)).join(', ')}) : t('detailsNote');
+  }
+  return {node, render};
 }
 
 // Fill a <select> from [{value, label}] or [{group, options}], keeping `value` selected.
@@ -101,7 +123,7 @@ function createPanel(container, side, onChange) {
     shards: [0, 1, 2].map(() => el('select')),
     stacked: el('input', {type: 'checkbox', id: side + '-stacked'}),
     slots: [0, 1, 2, 3, 4, 5].map(() => el('select')),
-    cost: el('div', {class: 'cost'}), notices: el('div'), stats: el('table'), note: el('p', {class: 'note'}),
+    cost: el('div', {class: 'cost'}), notices: el('div'), statsView: createStatsView(), note: el('p', {class: 'note'}),
     hp: el('input', {type: 'number', min: 1, max: 100, step: 1, id: side + '-hp'}),
     gold: el('input', {type: 'number', min: 0, step: 1, id: side + '-gold'}),
     priority: el('select', {id: side + '-priority'}),
@@ -130,7 +152,7 @@ function createPanel(container, side, onChange) {
   const right = el('div', {},
     el('h3', {'data-k': 'items'}), el('div', {class: 'inventory'}, ...ui.slots.map((s) => el('div', {class: 'slot'}, s))),
     ui.cost, ...(side === 'you' ? [label('gold', side + '-gold'), ui.gold] : []), ui.notices,
-    el('h3', {'data-k': 'stats'}), ui.stats, ui.note);
+    el('h3', {'data-k': 'stats'}), ui.statsView.node, ui.note);
   const comboBox = el('div', {class: 'full'}, el('h3', {'data-k': 'combo'}), ui.comboList,
     el('div', {class: 'row combo-add'}, ui.addStep, ui.addButton, ui.resetButton));
   const removeButton = el('button', {type: 'button', class: 'remove-enemy'});
@@ -297,7 +319,7 @@ function createPanel(container, side, onChange) {
     }
     ui.notices.replaceChildren(...notes.map((n) => el('p', {class: 'notice', text: n})));
 
-    fillStatsTable(ui.stats, state.champ, s);
+    ui.statsView.render({...state});
     ui.note.textContent = t('asNote');
     renderCombo();
     if (onChange) onChange();
@@ -581,31 +603,34 @@ function createRankings(section) {
 }
 let rankings = null;
 
-// "Champ Optimization" tab: one champion's best builds for one stat, with the full stats of each.
+// "Champ Optimization" tab: one champion's best builds for one stat. Items of the build shown can be
+// unticked (the stats are recomputed without them) or opened in the Items tab.
 function createOptimizer(section) {
-  let result = null, opts = null, shownRow = 0;
+  let result = null, opts = null, shownRow = 0, excluded = new Set();
   const num = (attrs) => el('input', {type: 'number', step: 1, ...attrs});
   const ui = {
     title: el('h2', {id: 'optimize-title'}), champ: el('select', {id: 'opt-champ'}), stat: el('select', {id: 'opt-stat'}),
     level: num({id: 'opt-level', min: 1, max: 18, value: 18}), gold: num({id: 'opt-gold', min: 0}),
     stacks: num({id: 'opt-stacks', min: 0, value: 0}), stacked: el('input', {type: 'checkbox', id: 'opt-stacked'}),
     stackedText: el('span'), button: el('button', {type: 'button'}), labels: {}, note: el('p', {class: 'note'}),
-    summary: el('p', {class: 'summary'}), build: el('p'), stats: el('table'), altTitle: el('h3'),
-    alts: el('table', {class: 'damage'}), notices: el('div'), time: el('p', {class: 'note'}), open: el('div', {class: 'open-buttons'}),
+    summary: el('p', {class: 'summary'}), reset: el('button', {type: 'button'}), items: el('ul', {class: 'opt-items'}),
+    itemsNote: el('p', {class: 'note'}), altsNote: el('p', {class: 'note'}),
+    runes: el('p'), statsView: createStatsView(), altTitle: el('h3'), alts: el('table', {class: 'damage'}),
+    notices: el('div'), time: el('p', {class: 'note'}), open: el('div', {class: 'open-buttons'}),
   };
   ui.stacked.checked = true;
-  const field = (key, input) => {
-    const wrap = el('div', {}, (ui.labels[key] = el('label', {for: input.id})), input);
-    return wrap;
-  };
+  const field = (key, input) => el('div', {}, (ui.labels[key] = el('label', {for: input.id})), input);
   const stacksField = field('rankStacks', ui.stacks);
+  const resultBox = el('div', {}, el('div', {class: 'row'}, ui.summary, ui.reset), ui.itemsNote, ui.items, ui.runes, ui.open,
+    ui.statsView.node, ui.notices, ui.altTitle, ui.altsNote, el('div', {class: 'table-scroll'}, ui.alts), ui.time);
   section.append(ui.title,
     el('div', {class: 'rank-form'}, field('champion', ui.champ), field('rankLevel', ui.level), field('rankStat', ui.stat),
       field('rankMaxGold', ui.gold), stacksField),
     el('div', {class: 'row combo-add'}, el('label', {class: 'check'}, ui.stacked, ui.stackedText), ui.button),
-    ui.note, ui.summary, ui.build, ui.open, ui.stats, ui.notices, ui.altTitle, el('div', {class: 'table-scroll'}, ui.alts), ui.time);
+    ui.note, resultBox);
   const names = (items) => items.filter(Boolean).map((id) => nm(DATA.items[id].name)).join(', ') || t('none');
   const digits = (stat) => (stat === 'as' ? 3 : 1);
+  const showRow = (i) => { shownRow = i; excluded = new Set(); };
 
   function render() {
     ui.title.textContent = t('optimizeTitle');
@@ -613,46 +638,67 @@ function createOptimizer(section) {
     ui.gold.placeholder = t('rankMaxGoldHint');
     ui.stackedText.textContent = t('stacked');
     ui.button.textContent = t('optButton');
+    ui.reset.textContent = t('optReset');
     const champs = Object.values(DATA.champions).slice().sort(byName);
     fillSelect(ui.champ, champs.map((c) => ({value: c.id, label: nm(c.name)})), ui.champ.value || champs[0].id);
     fillSelect(ui.stat, Engine.RANKABLE_STATS.map((k) => ({value: k, label: t('stat_' + k)})), ui.stat.value || 'hp');
     stacksField.hidden = !DATA.rules.stackers[ui.champ.value];
-    for (const n of [ui.summary, ui.build, ui.altTitle, ui.time]) n.textContent = '';
-    for (const n of [ui.stats, ui.alts, ui.notices, ui.open]) n.replaceChildren();
     ui.note.textContent = result ? '' : t('optEmpty');
+    resultBox.hidden = !result || !result.rows.length;
     if (!result) return;
     const champ = DATA.champions[opts.champ];
     if (!result.rows.length) { ui.note.textContent = t('optNothing'); return; }
     if (['mp', 'mpregen'].includes(opts.stat) && champ.resource !== 'Mana') ui.note.textContent = t('optNoMana', {champ: nm(champ.name)});
     const r = result.rows[shownRow];
-    ui.summary.textContent = t('optBest', {champ: nm(champ.name), level: opts.level, value: fmt(r.value, digits(opts.stat)),
-      stat: t('stat_' + opts.stat), cost: fmt(r.cost, 0)});
-    ui.build.textContent = `${t('itemsCol')}: ${names(r.items)}. ${t('runesCol')}: ${runeName(r.runes.keystone)}; `
-      + `${r.runes.shards.map(shardLabel).join(', ')}.`;
+    // The build as shown: unticked items are left out of the stats, the cost and "Open as".
+    const items = r.items.map((id, slot) => (excluded.has(slot) ? null : id));
+    const sel = {champ: opts.champ, level: opts.level, items, runes: r.runes, stacked: opts.stacked, stacks: opts.stacks};
+    const stats = Engine.championStats(DATA, sel);
+    const value = stats.total[opts.stat] || 0, cost = Engine.buildCost(DATA, items);
+    const vars = {champ: nm(champ.name), level: opts.level, value: fmt(value, digits(opts.stat)), stat: t('stat_' + opts.stat),
+      cost: fmt(cost, 0)};
+    ui.summary.textContent = t(excluded.size ? 'optModified' : 'optBest', vars);
+    ui.reset.hidden = !excluded.size;
+    ui.items.replaceChildren(...r.items.map((id, slot) => {
+      if (!id) return null;
+      const box = el('input', {type: 'checkbox', id: `opt-item-${slot}`});
+      box.checked = !excluded.has(slot);
+      box.addEventListener('change', () => { if (box.checked) excluded.delete(slot); else excluded.add(slot); render(); });
+      const details = el('button', {type: 'button', class: 'link', text: t('itemDetails'),
+        'aria-label': `${t('itemDetails')}: ${nm(DATA.items[id].name)}`});
+      details.addEventListener('click', () => itemsTab && itemsTab.open(id));
+      return el('li', {}, el('label', {class: 'check', for: box.id}, box, el('span', {text: nm(DATA.items[id].name)})), details);
+    }).filter(Boolean));
+    ui.runes.textContent = `${t('runesCol')}: ${runeName(r.runes.keystone)}; ${r.runes.shards.map(shardLabel).join(', ')}.`;
     ui.open.replaceChildren(...['you', 'enemy'].map((who, idx) => {
       const button = el('button', {type: 'button', text: t('openAs', {who: t(who)})});
       button.addEventListener('click', () => {
         if (who === 'enemy') setEnemyShown(true);
-        panels[idx].setBuild({...r, stacked: opts.stacked, stacks: opts.stacks});
+        panels[idx].setBuild({...r, items, stacked: opts.stacked, stacks: opts.stacks});
         showTab('calculator');
         panels[idx].section.scrollIntoView();
       });
       return button;
     }));
-    fillStatsTable(ui.stats, opts.champ, r.stats);
-    ui.notices.replaceChildren(...r.flags.map((f) => {
-      const [, kind, id] = f.split(':');
-      return el('p', {class: 'notice', text: kind === 'champion' ? t('unknownChampion', {champ: nm(DATA.champions[id].name)})
+    ui.statsView.render(sel);
+    ui.notices.replaceChildren(...stats.flags.map((f) => {
+      const [kind, id] = f.split(':');
+      return el('p', {class: 'notice', text: kind === 'unknown_champion' ? t('unknownChampion', {champ: nm(DATA.champions[id].name)})
         : t('unknownPassive', {item: nm(DATA.items[id].name)})});
     }));
+    ui.itemsNote.textContent = t('optItemsNote');
+    ui.altTitle.textContent = result.rows.length > 1 ? t('optBuilds') : '';
+    ui.altsNote.textContent = result.rows.length > 1 ? t('optBuildsNote') : '';
+    ui.alts.replaceChildren();
     if (result.rows.length > 1) {
-      ui.altTitle.textContent = t('optBuilds');
       const head = el('thead', {}, el('tr', {}, ...['rankCol', 'stat_' + opts.stat, 'costCol', 'itemsCol', '']
         .map((k) => el('th', {scope: 'col', text: k ? t(k) : ''}))));
       ui.alts.replaceChildren(head, el('tbody', {}, ...result.rows.map((row, i) => {
-        const show = el('button', {type: 'button', text: t('optShow')});
-        show.disabled = i === shownRow;
-        show.addEventListener('click', () => { shownRow = i; render(); });
+        // Loads this build at the top (all items ticked) and scrolls there.
+        const current = i === shownRow && !excluded.size;
+        const show = el('button', {type: 'button', text: t(current ? 'optShown' : 'optShow')});
+        show.disabled = current;
+        show.addEventListener('click', () => { showRow(i); render(); ui.summary.scrollIntoView({behavior: 'smooth', block: 'start'}); });
         return el('tr', {}, el('td', {text: String(i + 1)}), el('td', {class: 'total', text: fmt(row.value, digits(opts.stat))}),
           el('td', {text: fmt(row.cost, 0)}), el('td', {text: names(row.items)}), el('td', {}, show));
       })));
@@ -660,6 +706,7 @@ function createOptimizer(section) {
     ui.time.textContent = t('rankTime', {s: fmt(result.ms / 1000, 1)});
   }
 
+  ui.reset.addEventListener('click', () => { excluded = new Set(); render(); });
   ui.champ.addEventListener('change', () => { stacksField.hidden = !DATA.rules.stackers[ui.champ.value]; });
   ui.button.addEventListener('click', () => {
     opts = {champ: ui.champ.value, stat: ui.stat.value, level: Engine.clampLevel(ui.level.value),
@@ -669,7 +716,7 @@ function createOptimizer(section) {
     ui.button.disabled = true;
     setTimeout(() => { // let the disabled button paint before the search blocks for a moment
       result = Engine.optimizeChampion(DATA, opts);
-      shownRow = 0;
+      showRow(0);
       ui.button.disabled = false;
       render();
     }, 20);
@@ -679,9 +726,124 @@ function createOptimizer(section) {
 }
 let optimizer = null;
 
+// "Items" tab: every item, filtered and sorted, and one item's card (stats, gold efficiency, build path,
+// limits, what the calculator counts, description).
+const itemKind = (i) => (i.boots ? 'boots' : i.tier === 1 ? 'starter' : i.tier === 5 ? 'legendary' : 'components');
+function createItemsTab(section) {
+  let selected = null;
+  const ui = {
+    title: el('h2', {id: 'items-title'}), search: el('input', {type: 'search', id: 'items-search'}),
+    kind: el('select', {id: 'items-kind'}), stat: el('select', {id: 'items-stat'}), sort: el('select', {id: 'items-sort'}),
+    labels: {}, card: el('article', {class: 'item-card', tabindex: -1}), count: el('p', {class: 'note'}),
+    table: el('table', {class: 'damage'}), note: el('p', {class: 'note'}),
+  };
+  const field = (key, input) => el('div', {}, (ui.labels[key] = el('label', {for: input.id})), input);
+  section.append(ui.title, ui.card,
+    el('div', {class: 'rank-form'}, field('itemsSearch', ui.search), field('itemsKind', ui.kind), field('itemsStat', ui.stat),
+      field('itemsSort', ui.sort)),
+    ui.count, el('div', {class: 'table-scroll'}, ui.table), ui.note);
+  const statText = (k, v) => `+${fmt(v)}${k === 'as' ? '%' : ''} ${t('stat_' + k)}`;
+  const link = (id) => {
+    const b = el('button', {type: 'button', class: 'link', text: nm(DATA.items[id].name)});
+    b.addEventListener('click', () => open(id));
+    return b;
+  };
+  const links = (ids) => ids.flatMap((id, i) => (i ? [', ', link(id)] : [link(id)]));
+  const effText = (id) => { const e = Engine.goldEfficiency(DATA, id); return e.efficiency === null ? '' : fmt(100 * e.efficiency, 0) + '%'; };
+  const description = (html) => html.replace(/<stats>.*?<\/stats>/s, '').replace(/<br\s*\/?>/g, '\n').replace(/<[^>]+>/g, '')
+    .replace(/\n{3,}/g, '\n\n').trim();
+
+  function renderCard() {
+    ui.card.hidden = !selected;
+    if (!selected) return;
+    const item = DATA.items[selected], rules = DATA.rules;
+    const p = (text) => el('p', {text});
+    const parts = [el('h3', {text: nm(item.name)})];
+    if (nm(item.plaintext)) parts.push(el('p', {class: 'note', text: nm(item.plaintext)}));
+    const combine = item.from && item.from.length ? item.gold.base : null;
+    parts.push(p(combine !== null ? t('itemCostCombine', {cost: fmt(item.gold.total, 0), combine: fmt(combine, 0)})
+      : t('itemCost', {cost: fmt(item.gold.total, 0)})));
+    const stats = Object.entries(item.stats);
+    if (stats.length) parts.push(el('ul', {}, ...stats.map(([k, v]) => el('li', {text: statText(k, v)}))));
+    const e = Engine.goldEfficiency(DATA, selected);
+    if (e.efficiency !== null && stats.length) {
+      parts.push(p(t('itemGold', {value: fmt(e.value, 0), pct: fmt(100 * e.efficiency, 0)})
+        + (e.unpriced.length ? ' ' + t('itemUnpriced', {stats: e.unpriced.map((k) => t('stat_' + k)).join(', ')}) : '')));
+    }
+    if (item.from && item.from.length) parts.push(el('p', {}, t('itemFrom') + ' ', ...links(item.from)));
+    const into = (item.into || []).filter((id) => DATA.items[id]);
+    if (into.length) parts.push(el('p', {}, t('itemInto') + ' ', ...links(into)));
+    if (item.requiredChampion && DATA.champions[item.requiredChampion]) {
+      parts.push(p(t('itemOnlyFor', {champ: nm(DATA.champions[item.requiredChampion].name)})));
+    }
+    for (const g of item.groups || []) {
+      if (g === 'Boots') { parts.push(p(t('itemOneBoots'))); continue; }
+      const others = Object.keys(DATA.items).filter((id) => id !== selected && (DATA.items[id].groups || []).includes(g));
+      if (others.length) parts.push(el('p', {}, t('itemGroup', {n: DATA.groups[g] ?? 1}) + ' ', ...links(others)));
+    }
+    const counts = [];
+    if ((rules.itemStatPassives || {})[selected]) counts.push(t('countStat'));
+    if ((rules.itemStatPassivesUnknown || []).includes(selected)) counts.push(t('countStatUnknown'));
+    if ((rules.itemDamage || {})[selected]) counts.push(t('countDamage'));
+    if ((rules.itemDamageUnknown || []).includes(selected)) counts.push(t('countDamageUnknown'));
+    if ((rules.grievousWounds || {})[selected]) counts.push(t('countWounds', {pct: fmt(100 * rules.grievousWounds[selected], 0)}));
+    if ((rules.advisorNotScored || []).includes(selected)) counts.push(t('countNotScored'));
+    if (counts.length) parts.push(el('h4', {text: t('itemCounted')}), el('ul', {}, ...counts.map((c) => el('li', {text: c}))));
+    const text = description(item.desc[lang] || item.desc.en || '');
+    if (text) parts.push(el('h4', {text: t('itemDescription')}), el('p', {class: 'item-desc', text}));
+    ui.card.replaceChildren(...parts);
+  }
+
+  function render() {
+    ui.title.textContent = t('itemsTitle');
+    for (const [k, node] of Object.entries(ui.labels)) node.textContent = t(k);
+    ui.search.placeholder = t('itemsSearchHint');
+    fillSelect(ui.kind, [{value: '', label: t('itemsAll')}, ...['legendary', 'boots', 'starter', 'components']
+      .map((k) => ({value: k, label: t(k)}))], ui.kind.value);
+    const statKeys = STAT_ORDER.filter((k) => Object.values(DATA.items).some((i) => i.stats[k]));
+    fillSelect(ui.stat, [{value: '', label: t('itemsAnyStat')}, ...statKeys.map((k) => ({value: k, label: t('stat_' + k)}))], ui.stat.value);
+    const sorts = ['name', 'priceHigh', 'priceLow', 'efficiency', ...(ui.stat.value ? ['statValue'] : [])];
+    fillSelect(ui.sort, sorts.map((k) => ({value: k, label: t('itemsSort_' + k, {stat: ui.stat.value ? t('stat_' + ui.stat.value) : ''})})),
+      sorts.includes(ui.sort.value) ? ui.sort.value : 'name');
+    const query = ui.search.value.trim().toLowerCase();
+    const eff = (id) => Engine.goldEfficiency(DATA, id).efficiency ?? -1;
+    const sorters = {name: (a, b) => byName(DATA.items[a], DATA.items[b]), priceHigh: (a, b) => DATA.items[b].gold.total - DATA.items[a].gold.total,
+      priceLow: (a, b) => DATA.items[a].gold.total - DATA.items[b].gold.total, efficiency: (a, b) => eff(b) - eff(a),
+      statValue: (a, b) => (DATA.items[b].stats[ui.stat.value] || 0) - (DATA.items[a].stats[ui.stat.value] || 0)};
+    const ids = Object.keys(DATA.items).filter((id) => {
+      const i = DATA.items[id];
+      return (!query || nm(i.name).toLowerCase().includes(query)) && (!ui.kind.value || itemKind(i) === ui.kind.value)
+        && (!ui.stat.value || i.stats[ui.stat.value]);
+    }).sort((a, b) => sorters[ui.sort.value](a, b) || byName(DATA.items[a], DATA.items[b]));
+    ui.count.textContent = t('itemsCount', {n: ids.length});
+    const head = el('thead', {}, el('tr', {}, ...['itemCol', 'costCol', 'statsCol', 'efficiencyCol']
+      .map((k) => el('th', {scope: 'col', text: t(k)}))));
+    ui.table.replaceChildren(head, el('tbody', {}, ...ids.map((id) => {
+      const i = DATA.items[id];
+      return el('tr', {}, el('th', {scope: 'row'}, link(id)), el('td', {text: fmt(i.gold.total, 0)}),
+        el('td', {text: Object.entries(i.stats).map(([k, v]) => statText(k, v)).join(', ')}), el('td', {text: effText(id)}));
+    })));
+    ui.note.textContent = t('itemsEfficiencyNote');
+    renderCard();
+  }
+
+  function open(id) {
+    selected = id;
+    if (TABS.includes('items')) showTab('items');
+    render();
+    ui.card.scrollIntoView({behavior: 'smooth', block: 'start'});
+    ui.card.focus({preventScroll: true});
+  }
+  for (const input of [ui.kind, ui.stat, ui.sort]) input.addEventListener('change', render);
+  ui.search.addEventListener('input', render);
+  render();
+  return {setLang: render, open};
+}
+let itemsTab = null;
+
 // Tabs: the calculator (panels + advisor), the rankings and the champion optimizer. The choice is remembered.
 // Only tabs present in the page: a cached older index.html next to a newer app.js must not break the page.
-const TABS = ['calculator', 'rankings', 'optimize'].filter((id) => document.getElementById(id) && document.getElementById('tab-' + id));
+const TABS = ['calculator', 'rankings', 'optimize', 'items'].filter((id) => document.getElementById(id) && document.getElementById('tab-' + id));
 function showTab(name) {
   for (const [tab, panel] of TABS.map((x) => [x, x])) {
     const selected = tab === name;
@@ -720,9 +882,11 @@ function renderPage() {
   if (advisor) advisor.setLang();
   if (rankings) rankings.setLang();
   if (optimizer) optimizer.setLang();
+  if (itemsTab) itemsTab.setLang();
   document.getElementById('tab-calculator').textContent = t('tabCalculator');
   document.getElementById('tab-rankings').textContent = t('tabRankings');
   if (optimizer) document.getElementById('tab-optimize').textContent = t('tabOptimize');
+  if (itemsTab) document.getElementById('tab-items').textContent = t('tabItems');
   addEnemyButton.textContent = t('addEnemy');
 }
 
@@ -744,6 +908,7 @@ advisor = createAdvisor(document.getElementById('advisor'));
 setEnemyShown(enemyShown);
 rankings = createRankings(document.getElementById('rankings'));
 if (TABS.includes('optimize')) optimizer = createOptimizer(document.getElementById('optimize'));
+if (TABS.includes('items')) itemsTab = createItemsTab(document.getElementById('items'));
 TABS.forEach((name, i) => {
   const tab = document.getElementById('tab-' + name);
   tab.addEventListener('click', () => showTab(name));

@@ -216,3 +216,41 @@ test('champion optimization counts champion stacks', () => {
   const at = (stacks) => Engine.optimizeChampion(D, {champ: 'Veigar', level: 18, stat: 'ap', maxGold: 3000, stacks, count: 1}).rows[0].value;
   assert.ok(Math.abs(at(200) - at(0)) >= 200);
 });
+
+// --- Per-item breakdown and gold efficiency ----------------------------------------------------------
+test('breakdown: each item column is what you lose without it; plain stats add up exactly', () => {
+  const sel = {champ: 'Garen', level: 18, items: ['3068', '3065', null, null, null, null], runes: null, stacked: false, stacks: 0};
+  const b = Engine.statBreakdown(D, sel);
+  assert.deepEqual(b.columns.map((c) => c.kind), ['item', 'item', 'runes', 'champion']);
+  const sunfire = b.columns[0];
+  assert.equal(sunfire.id, '3068');
+  assert.equal(sunfire.values.armor, D.items['3068'].stats.armor);
+  const s = Engine.championStats(D, sel);
+  const sum = b.columns.reduce((t, c) => t + (c.values.armor || 0), 0);
+  assert.ok(Math.abs(s.base.armor + sum - s.total.armor) < 1e-9);
+  assert.deepEqual(b.notAdditive, []);
+});
+test('breakdown: a multiplier item counts its share of everything (Rabadon), and the mismatch is reported', () => {
+  const sel = {champ: 'Annie', level: 18, items: ['3089', '1058', null, null, null, null], // Rabadon's Deathcap + Needlessly Large Rod
+    runes: null, stacked: false, stacks: 0};
+  const b = Engine.statBreakdown(D, sel);
+  const rod = D.items['1058'].stats.ap, cap = D.items['3089'].stats.ap;
+  const rabadon = b.columns.find((c) => c.id === '3089').values.ap;
+  assert.ok(rabadon > cap + 0.3 * rod, String(rabadon));
+  assert.ok(b.notAdditive.includes('ap'));
+});
+test('breakdown: champion column has the passive and stacks', () => {
+  const b = Engine.statBreakdown(D, {champ: 'Tristana', level: 18, items: [], runes: null, stacked: false, stacks: 0});
+  assert.equal(b.columns.find((c) => c.kind === 'champion').values.range, 150);
+  const v = Engine.statBreakdown(D, {champ: 'Veigar', level: 1, items: [], runes: null, stacked: false, stacks: 40});
+  assert.equal(v.columns.find((c) => c.kind === 'champion').values.ap, 40);
+});
+test('gold efficiency: reference items are 100%, others priced from them', () => {
+  const ruby = Engine.goldEfficiency(D, '1028');
+  assert.ok(Math.abs(ruby.efficiency - 1) < 1e-9 && ruby.unpriced.length === 0);
+  const prices = Engine.statGoldPrices(D);
+  assert.ok(prices.hp > 0 && prices.armor > 0 && !('lethality' in prices));
+  const cleaver = Engine.goldEfficiency(D, '3071');
+  const value = Object.entries(D.items['3071'].stats).reduce((t, [k, v]) => t + v * (prices[k] || 0), 0);
+  assert.ok(Math.abs(cleaver.value - value) < 1e-9 && Math.abs(cleaver.efficiency - value / 3000) < 1e-9);
+});

@@ -54,7 +54,14 @@
   #advisor { margin-top: 16px; }
   .not-scored { margin: 0; padding-left: 1.2em; color: var(--muted); }
   #advisor table.damage td:nth-child(2), #advisor table.damage td:nth-child(3), #advisor table.damage td:nth-child(5) { white-space: nowrap; }
-  .table-scroll { overflow-x: auto; } /* wide advisor table scrolls inside itself on phones */
+  .table-scroll { overflow-x: auto; } /* wide tables scroll inside themselves on phones */
+  button.link { background: none; border: none; padding: 0; color: var(--gold); text-decoration: underline; cursor: pointer; font: inherit; text-align: left; }
+  .details-toggle { margin-bottom: 8px; }
+  .opt-items { list-style: none; padding: 0; margin: 8px 0; display: grid; gap: 4px; }
+  .opt-items li { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+  .item-card { border: 1px solid var(--line); border-radius: 8px; padding: 12px 16px; margin-bottom: 16px; }
+  .item-card h3 { margin-top: 0; }
+  .item-desc { white-space: pre-line; }
   @media (min-width: 1100px) { #panels { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); } }
   .panel {
     background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 16px;
@@ -119,6 +126,7 @@
   <button type="button" role="tab" id="tab-calculator" aria-controls="calculator"></button>
   <button type="button" role="tab" id="tab-rankings" aria-controls="rankings"></button>
   <button type="button" role="tab" id="tab-optimize" aria-controls="optimize"></button>
+  <button type="button" role="tab" id="tab-items" aria-controls="items"></button>
 </nav>
 <main>
   <div id="calculator" role="tabpanel" aria-labelledby="tab-calculator">
@@ -127,6 +135,7 @@
   </div>
   <section id="rankings" class="panel" role="tabpanel" aria-labelledby="tab-rankings" hidden></section>
   <section id="optimize" class="panel" role="tabpanel" aria-labelledby="tab-optimize" hidden></section>
+  <section id="items" class="panel" role="tabpanel" aria-labelledby="tab-items" hidden></section>
 </main>
 <footer data-t="disclaimer"></footer>
 <script src="data.js"></script>
