@@ -145,7 +145,63 @@ const GUIDE = (() => {
           ],
           note: () => ({
             en: `Grievous Wounds (from items like Executioner's Calling) cut healing by ${Math.round(gw * 100)}%. Healing above your maximum health is lost.`,
-            fr: `Les Blessures graves (d'objets comme l'Appel du bourreau) réduisent les soins de ${Math.round(gw * 100)} %. Les soins au-delà de vos PV max sont perdus.`,
+            fr: `Les Blessures graves (d'objets comme la Marque du bourreau) réduisent les soins de ${Math.round(gw * 100)} %. Les soins au-delà de vos PV max sont perdus.`,
+          }),
+        };
+      },
+    },
+    levels: {
+      inputs: [{key: 'level', min: 1, max: 18, step: 1, value: 9, en: 'Champion level', fr: 'Niveau du champion'}],
+      run(v) {
+        const share = 100 * Eng.growth(v.level) / Eng.growth(18);
+        return {
+          rows: [
+            {en: 'Armor gained from levels (4 per level)', fr: 'Armure gagnée par les niveaux (4 par niveau)', value: 4 * Eng.growth(v.level), max: 68},
+            {en: 'Share of the level-18 gain', fr: 'Part du gain du niveau 18', value: share, max: 100, unit: '%', strong: true},
+          ],
+          note: (f) => ({
+            en: `Level ${v.level}: ${f(share, 0)}% of what this stat gains by level 18, after ${f(100 * (v.level - 1) / 17, 0)}% of the level-ups.`,
+            fr: `Niveau ${v.level} : ${f(share, 0)} % de ce que cette stat gagne jusqu'au niveau 18, après ${f(100 * (v.level - 1) / 17, 0)} % des montées de niveau.`,
+          }),
+        };
+      },
+    },
+    damageTypes: {
+      inputs: [
+        {key: 'hp', min: 500, max: 5000, step: 100, value: 2000, en: 'Enemy health', fr: 'PV adverses'},
+        {key: 'armor', min: 0, max: 300, step: 5, value: 100, en: 'Enemy armor', fr: 'Armure adverse'},
+      ],
+      run(v) {
+        const target = {total: {armor: v.armor}}, none = {total: {}};
+        return {
+          rows: [
+            {en: '300 physical damage', fr: '300 dégâts physiques', value: Eng.mitigate(300, 'physical', none, target), max: 500},
+            {en: '300 true damage', fr: '300 dégâts bruts', value: 300, max: 500},
+            {en: '10% of max health, physical', fr: '10 % des PV max, physiques', value: Eng.mitigate(v.hp / 10, 'physical', none, target), max: 500, strong: true},
+          ],
+          note: (f) => ({
+            en: `True damage ignores armor. Damage based on max health grows with the target: here 10% is ${f(v.hp / 10, 0)} before armor.`,
+            fr: `Les dégâts bruts ignorent l'armure. Les dégâts en % des PV max grandissent avec la cible : ici 10 % font ${f(v.hp / 10, 0)} avant l'armure.`,
+          }),
+        };
+      },
+    },
+    shred: {
+      inputs: [
+        {key: 'armor', min: 0, max: 300, step: 5, value: 150, en: 'Enemy armor', fr: 'Armure adverse'},
+        {key: 'shred', min: 0, max: 30, step: 6, value: 30, unit: '%', en: 'Armor shred (Black Cleaver)', fr: 'Réduction d\'armure (Couperet noir)'},
+      ],
+      run(v) {
+        const target = {total: {armor: v.armor}}, ally = {total: {}};
+        const before = Eng.mitigate(200, 'physical', ally, target), after = Eng.mitigate(200, 'physical', ally, target, {armor: v.shred / 100, mr: 0});
+        return {
+          rows: [
+            {en: 'A teammate\'s hit (of 200), no shred', fr: 'Coup d\'un allié (sur 200), sans réduction', value: before, max: 200},
+            {en: 'The same hit with your shred', fr: 'Le même coup avec votre réduction', value: after, max: 200, strong: true},
+          ],
+          note: (f) => ({
+            en: `Your shred makes every teammate's physical damage ${f(100 * after / before - 100, 0)}% stronger on this target. Armor penetration would only help you.`,
+            fr: `Votre réduction rend les dégâts physiques de chaque allié ${f(100 * after / before - 100, 0)} % plus forts sur cette cible. La pénétration d'armure n'aiderait que vous.`,
           }),
         };
       },
@@ -261,6 +317,8 @@ const GUIDE = (() => {
           {en: 'Health: armor multiplies it (see the example under Health).', fr: 'PV : l\'armure les multiplie (voir l\'exemple sous PV).'},
           {en: 'The attacker\'s armor penetration % then lethality reduce the armor that counts.', fr: 'La pénétration d\'armure % puis la létalité de l\'attaquant réduisent l\'armure qui compte.'},
           {en: 'Each point adds the same: 1% of your health against physical damage.', fr: 'Chaque point ajoute autant : 1 % de vos PV face aux dégâts physiques.'},
+          {en: 'Armor can go below 0 (some abilities remove a fixed amount): the target then takes more than full damage, 17% more at -20 armor.',
+            fr: 'L\'armure peut passer sous 0 (certains sorts en retirent une quantité fixe) : la cible subit alors plus que les dégâts entiers, 17 % de plus à -20 d\'armure.'},
         ]},
       {key: 'mr', wiki: 'Magic_resistance', example: 'mr',
         what: {en: 'Like armor, against magic damage: most AP abilities. 100 magic resist means you take half the damage.',
@@ -272,7 +330,10 @@ const GUIDE = (() => {
       {key: 'tenacity', wiki: 'Tenacity',
         what: {en: 'Shortens most crowd control on you (stuns, slows, roots). It doesn\'t shorten knock-ups or suppression.',
           fr: 'Raccourcit la plupart des contrôles subis (étourdissements, ralentissements, immobilisations). Pas les projections ni les suppressions.'},
-        with: [{en: 'Mercury\'s Treads and the Tenacity stat shard give it.', fr: 'Les Sandales de Mercure et le fragment de Ténacité en donnent.'}]},
+        with: [
+          {en: 'Mercury\'s Treads, Sterak\'s Gage and the Tenacity stat shard give it.', fr: 'Les Sandales de Mercure, le Gage de Sterak et le fragment de Ténacité en donnent.'},
+          {en: 'Sources multiply instead of adding up: 30% and 20% make 44%, not 50%.', fr: 'Les sources se multiplient au lieu de s\'additionner : 30 % et 20 % font 44 %, pas 50 %.'},
+        ]},
       {key: 'hpregen', wiki: 'Health_regeneration',
         what: {en: 'Health you get back every 5 seconds.', fr: 'Les PV récupérés toutes les 5 secondes.'},
         with: [{en: 'Base health regen % multiplies only your champion\'s own regen, not the regen from items.',
@@ -301,6 +362,29 @@ const GUIDE = (() => {
           fr: 'La vitesse à laquelle vous vous déplacez. Au-delà de 415, seuls 80 % de la vitesse en plus comptent, et 50 % au-delà de 490.'},
         with: [{en: 'Move speed % multiplies flat move speed (from boots), so buy boots first.',
           fr: 'La vitesse de déplacement % multiplie la vitesse fixe (des bottes) : achetez les bottes d\'abord.'}]},
+    ]},
+    {en: 'Game mechanics', fr: 'Mécaniques du jeu', stats: [
+      {key: 'levels', wiki: 'Champion_statistic', example: 'levels', title: {en: 'Level growth', fr: 'Progression par niveau'},
+        what: {en: 'Each level raises your champion\'s base stats (health, armor, AD…), but not evenly: early levels give less than late ones.',
+          fr: 'Chaque niveau augmente les stats de base de votre champion (PV, armure, AD…), mais pas de façon égale : les premiers niveaux donnent moins que les derniers.'},
+        with: [
+          {en: 'Only base stats grow with levels; items and runes give the same at every level.', fr: 'Seules les stats de base grandissent avec les niveaux ; objets et runes donnent autant à tout niveau.'},
+          {en: 'Being one or two levels behind matters more late in the game.', fr: 'Avoir un ou deux niveaux de retard compte plus en fin de partie.'},
+        ]},
+      {key: 'damageTypes', wiki: 'Damage', example: 'damageTypes', title: {en: 'Damage types', fr: 'Types de dégâts'},
+        what: {en: 'Physical damage is reduced by armor, magic damage by magic resist, and true damage by nothing. Some damage is a percentage of the target\'s maximum, current or missing health.',
+          fr: 'Les dégâts physiques sont réduits par l\'armure, les magiques par la résistance magique, et les dégâts bruts par rien. Certains dégâts sont un pourcentage des PV max, actuels ou manquants de la cible.'},
+        with: [
+          {en: 'Max health damage is strong against tanks; missing health damage finishes off low targets.', fr: 'Les dégâts en % des PV max sont forts contre les tanks ; ceux en % des PV manquants achèvent les cibles affaiblies.'},
+          {en: 'The calculator shows each spell\'s type (physical, magic, true) in the combo.', fr: 'Le calculateur indique le type de chaque sort (physique, magique, brut) dans le combo.'},
+        ]},
+      {key: 'shred', wiki: 'Armor_reduction', example: 'shred', title: {en: 'Armor shred', fr: 'Réduction d\'armure'},
+        what: {en: 'Lowers the target\'s armor itself, for a few seconds. Black Cleaver does it: 6% per hit, up to 30%.',
+          fr: 'Baisse l\'armure de la cible elle-même, pendant quelques secondes. Le Couperet noir le fait : 6 % par coup, jusqu\'à 30 %.'},
+        with: [
+          {en: 'Unlike armor penetration, it helps every teammate hitting that target.', fr: 'Contrairement à la pénétration d\'armure, elle aide chaque allié qui frappe cette cible.'},
+          {en: 'Applied before penetration: shred first, then armor penetration %, then lethality.', fr: 'Appliquée avant la pénétration : réduction d\'abord, puis pénétration d\'armure %, puis létalité.'},
+        ]},
     ]},
   ];
 

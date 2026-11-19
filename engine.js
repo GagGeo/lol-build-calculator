@@ -77,12 +77,16 @@ const Engine = (() => {
     for (const k of BASE_KEYS) base[k] = b[k] + (b[k + 'perlevel'] || 0) * g;
 
     const bonus = {};
+    // Tenacity from items and stat shards stacks multiplicatively (30% and 20% make 44%); everything else adds.
+    const addBonus = (k, v) => {
+      if (k === 'tenacity') bonus.tenacity = 100 - (100 - (bonus.tenacity || 0)) * (1 - v / 100); else add(bonus, k, v);
+    };
     const fromItems = {};
     for (const id of items) {
-      for (const [k, v] of Object.entries(data.items[id].stats)) { add(bonus, k, v); add(fromItems, k, v); }
+      for (const [k, v] of Object.entries(data.items[id].stats)) { addBonus(k, v); add(fromItems, k, v); }
       // Flat passive stats ("add") and stacking items ("stacked", only when fully stacked) count as item stats.
       for (const p of rules.itemStatPassives[id] || []) {
-        if (p.op === 'add' || (p.op === 'stacked' && sel.stacked)) { add(bonus, p.stat, p.value); add(fromItems, p.stat, p.value); }
+        if (p.op === 'add' || (p.op === 'stacked' && sel.stacked)) { addBonus(p.stat, p.value); add(fromItems, p.stat, p.value); }
       }
     }
 
@@ -92,7 +96,7 @@ const Engine = (() => {
         const s = rules.shards[shard];
         if (!s) continue;
         for (const [k, v] of Object.entries(s)) {
-          if (k === 'hpPerLevel') add(bonus, 'hp', v * level); else add(bonus, k, v);
+          if (k === 'hpPerLevel') addBonus('hp', v * level); else addBonus(k, v);
         }
       }
       const melee = b.range < 300;
@@ -102,12 +106,12 @@ const Engine = (() => {
           if (entry.only && (entry.only === 'melee') !== melee) continue;
           if (entry.op === 'jack') {
             const n = Object.values(fromItems).filter((v) => v).length;
-            add(bonus, 'ah', n);
-            add(bonus, 'adaptive', n >= 10 ? 20 : n >= 5 ? 8 : 0);
+            addBonus('ah', n);
+            addBonus('adaptive', n >= 10 ? 20 : n >= 5 ? 8 : 0);
           } else if (entry.mulTotal !== undefined) {
             runeMuls.push({stat: entry.stat, value: entry.mulTotal});
           } else {
-            add(bonus, entry.stat, runeEntryValue(entry, level));
+            addBonus(entry.stat, runeEntryValue(entry, level));
           }
         }
       }
@@ -116,15 +120,15 @@ const Engine = (() => {
     const stacker = rules.stackers[sel.champ];
     if (stacker && sel.stacks > 0) {
       for (const [k, v] of Object.entries(stacker)) {
-        if (typeof v === 'number') add(bonus, k, v * sel.stacks);
-        else if (v.max !== undefined) add(bonus, k, Math.min(v.max, v.value * sel.stacks));
-        else if (v.per) add(bonus, k, Math.floor(sel.stacks / v.per) * v.value);
-        else if (v.byRRank) { const r = ultRank(level); if (r) add(bonus, k, v.byRRank[r - 1] * sel.stacks); }
+        if (typeof v === 'number') addBonus(k, v * sel.stacks);
+        else if (v.max !== undefined) addBonus(k, Math.min(v.max, v.value * sel.stacks));
+        else if (v.per) addBonus(k, Math.floor(sel.stacks / v.per) * v.value);
+        else if (v.byRRank) { const r = ultRank(level); if (r) addBonus(k, v.byRRank[r - 1] * sel.stacks); }
       }
     }
 
     const REGEN = ['hpregen', 'mpregen'];
-    for (const [k, v] of Object.entries(passive ? passive.add : {})) if (!REGEN.includes(k)) add(bonus, k, v);
+    for (const [k, v] of Object.entries(passive ? passive.add : {})) if (!REGEN.includes(k)) addBonus(k, v);
 
     // Adaptive force: 1 AP or 0.6 AD, toward the larger bonus; ties follow the champion's type.
     const adaptive = bonus.adaptive || 0;

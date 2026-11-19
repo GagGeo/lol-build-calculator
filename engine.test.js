@@ -580,6 +580,11 @@ test('move speed rune pages try Base % move speed runes (Celerity-like)', () => 
 });
 test('mana regen ranks only mana users', () =>
   assert.ok(Engine.rankStat(DR, {stat: 'mpregen', level: 18, count: 50}).rows.every((r) => DR.champions[r.champ].resource === 'Mana')));
+test('tenacity from several items stacks multiplicatively', () => {
+  const DT = {...DR, items: {...DR.items, merc: rItem('merc', {tenacity: 30}, 100), sterak: rItem('sterak', {tenacity: 20}, 100)}};
+  const t = Engine.championStats(DT, {champ: 'Annie', level: 18, items: ['merc', 'sterak'], runes: null, stacked: false, stacks: 0}).total.tenacity;
+  assert.ok(Math.abs(t - 44) < 1e-9, String(t)); // 1 - 0.7 x 0.8
+});
 test('tenacity is capped at 100', () => {
   const DT = {...DR, items: {...DR.items, ten: rItem('ten', {tenacity: 40}, 100)}};
   assert.ok(Engine.championStats(DT, {champ: 'Annie', level: 18, items: ['ten', 'ten', 'ten'], runes: null, stacked: false, stacks: 0}).total.tenacity <= 100);

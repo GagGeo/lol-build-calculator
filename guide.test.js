@@ -11,7 +11,8 @@ test('every card has both languages, a stat label and a known example', () => {
     for (const c of g.stats) {
       both(c.what, c.key);
       c.with.forEach((w) => both(w, c.key));
-      assert.ok(I18N.LABELS.en['stat_' + c.key] && I18N.LABELS.fr['stat_' + c.key], `${c.key}: stat label`);
+      if (c.title) both(c.title, c.key);
+      else assert.ok(I18N.LABELS.en['stat_' + c.key] && I18N.LABELS.fr['stat_' + c.key], `${c.key}: stat label`);
       assert.ok(c.wiki, `${c.key}: wiki page`);
       if (c.example) assert.ok(GUIDE.EXAMPLES[c.example], `${c.key}: example ${c.example}`);
     }

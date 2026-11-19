@@ -873,6 +873,30 @@ function createGuideTab(section) {
     update();
     return el('div', {class: 'guide-try'}, el('p', {class: 'guide-label', text: t('guideExample')}), ...inputs, rows, note);
   }
+  // "Items with this stat": the items giving it (most first), then those changing it through a passive
+  // (rules.py itemStatPassives). Each name opens the item in the Items tab. Open lists stay open on re-render.
+  const ITEM_KEYS = {ms: ['ms', 'msPct'], hpregen: ['hpregen', 'hpRegenPct'], mpregen: ['mpregen', 'mpRegenPct']};
+  const shownItems = new Set();
+  function itemList(card) {
+    const keys = ITEM_KEYS[card.key] || [card.key], passives = DATA.rules.itemStatPassives || {};
+    const found = Object.keys(DATA.items).map((id) => ({id,
+      flat: keys.filter((k) => DATA.items[id].stats[k]).map((k) => [k, DATA.items[id].stats[k]]),
+      passive: (passives[id] || []).some((o) => keys.includes(o.stat) || keys.includes(o.to))}))
+      .filter((x) => x.flat.length || x.passive)
+      .sort((a, b) => ((b.flat[0] || [])[1] || 0) - ((a.flat[0] || [])[1] || 0) || nm(DATA.items[a.id].name).localeCompare(nm(DATA.items[b.id].name), lang));
+    if (!found.length) return [];
+    const open = shownItems.has(card.key);
+    const toggle = el('button', {type: 'button', class: 'link', 'aria-expanded': String(open),
+      text: open ? t('guideHideItems') : t('guideShowItems', {n: found.length})});
+    toggle.addEventListener('click', () => { if (open) shownItems.delete(card.key); else shownItems.add(card.key); render(); });
+    const amount = ([k, v]) => `+${fmt(v)}${k === 'as' ? '%' : ''}` + (k === card.key ? '' : ' ' + t('stat_' + k));
+    const list = open ? [el('ul', {class: 'guide-items'}, ...found.map((x) => {
+      const name = el('button', {type: 'button', class: 'link', text: nm(DATA.items[x.id].name)});
+      name.addEventListener('click', () => itemsTab && itemsTab.open(x.id));
+      return el('li', {}, name, ' ', [...x.flat.map(amount), ...(x.passive ? [t('guideItemPassive')] : [])].join(', '));
+    }))] : [];
+    return [el('p', {class: 'guide-label'}, toggle), ...list];
+  }
   // One sub tab per group (Basic attacks, Abilities…); the one shown is remembered.
   let current = (() => { try { return Math.max(0, GUIDE.GROUPS.findIndex((g) => g.en === storage.getItem('guideGroup'))); } catch { return 0; } })();
   function select(i, focus) {
@@ -892,9 +916,9 @@ function createGuideTab(section) {
       return b;
     });
     const cards = GUIDE.GROUPS[current].stats.map((card) => el('article', {class: 'item-card', id: 'guide-' + card.key},
-      el('h4', {text: t('stat_' + card.key)}), el('p', {text: pick(card.what)}),
+      el('h4', {text: card.title ? pick(card.title) : t('stat_' + card.key)}), el('p', {text: pick(card.what)}),
       el('p', {class: 'guide-label', text: t('guideWith')}), el('ul', {}, ...card.with.map((w) => el('li', {text: pick(w)}))),
-      ...(card.example ? [example(card)] : []),
+      ...(card.example ? [example(card)] : []), ...itemList(card),
       el('p', {class: 'note'}, outLink(GUIDE.WIKI + card.wiki, t('guideWiki')))));
     section.replaceChildren(el('h2', {text: t('guideTitle')}), el('div', {},
       el('p', {text: t('guideIntro')}), el('div', {class: 'subtabs', role: 'tablist', 'aria-label': t('guideTitle')}, ...tabs),
