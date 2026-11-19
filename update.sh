@@ -4,6 +4,7 @@
 #        ./update.sh 16.24.1    (a specific patch)
 cd "$(dirname "$0")" || exit 1
 python3 prep.py "$@" || exit 1
+python3 stamp.py || exit 1
 python3 -m unittest -q test_prep || exit 1
 if ! python3 check.py; then
   echo

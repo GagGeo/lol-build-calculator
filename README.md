@@ -68,6 +68,7 @@ Most patches need nothing from you.
 - **Run an update now:** **Actions** tab → **Patch update** → **Run workflow**.
 - **Paused updates:** GitHub pauses daily jobs in a repository after 60 days without activity. If updates stop, go to **Actions** → **Patch update** and click **Enable workflow**.
 - **On a computer, for developers:** you need Python 3 and Node.js, no packages. Run `./update.sh` (Mac, Linux, or Git Bash on Windows). It downloads the patch, rebuilds `data.js` and runs every check. `python3 -m unittest test_prep` and `node --test` run the tests.
+- **After editing a script by hand** (`app.js`, `engine.js`…): run `python3 stamp.py` (or `./update.sh`). It updates the fingerprints in `index.html` so visitors' browsers load the new file instead of a cached old one; `node --test` fails until you do.
 
 ---
 
@@ -135,6 +136,7 @@ La plupart des patchs ne demandent rien.
 - **Lancer une mise à jour tout de suite :** onglet **Actions** → **Patch update** → **Run workflow**.
 - **Mises à jour en pause :** GitHub met en pause les tâches quotidiennes d'un dépôt après 60 jours sans activité. Si les mises à jour s'arrêtent, allez dans **Actions** → **Patch update** et cliquez sur **Enable workflow**.
 - **Sur un ordinateur, pour les développeurs :** il faut Python 3 et Node.js, sans aucun paquet. Lancez `./update.sh` (Mac, Linux, ou Git Bash sous Windows). Il télécharge le patch, reconstruit `data.js` et lance toutes les vérifications. `python3 -m unittest test_prep` et `node --test` lancent les tests.
+- **Après avoir modifié un script à la main** (`app.js`, `engine.js`…) : lancez `python3 stamp.py` (ou `./update.sh`). Il met à jour les empreintes dans `index.html` pour que les navigateurs chargent le nouveau fichier et non une ancienne copie en cache ; `node --test` échoue tant que ce n'est pas fait.
 
 ---
 
