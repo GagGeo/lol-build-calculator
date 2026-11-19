@@ -28,6 +28,23 @@ const fmt = (n, digits = 1) => {
   return r.toLocaleString(lang === 'fr' ? 'fr-FR' : 'en-US', {maximumFractionDigits: digits});
 };
 
+// Stat / base / bonus / total rows of one championStats result into a <table>.
+function fillStatsTable(table, champ, s) {
+  const head = el('tr', {}, ...['stat', 'base', 'bonus', 'total'].map((k) => el('th', {scope: 'col', text: t(k)})));
+  // Mana only means something for mana users; energy users get it relabelled; other resources are hidden.
+  const resource = DATA.champions[champ].resource;
+  const shown = (k) => k !== 'mp' || resource === 'Mana' || resource === 'Energy';
+  const rows = STAT_ORDER.filter((k) => shown(k) && ((s.base[k] || 0) || (s.bonus[k] || 0) || (s.total[k] || 0))).map((k) => {
+    const digits = k === 'as' ? 3 : 1;
+    const baseV = s.base[k] ? fmt(s.base[k], digits) : '';
+    const bonusV = s.bonus[k] ? (k === 'as' ? fmt(s.bonus[k]) + '%' : '+' + fmt(s.bonus[k])) : '';
+    const statName = k === 'mp' && resource === 'Energy' ? t('stat_energy') : t('stat_' + k);
+    return el('tr', {}, el('th', {scope: 'row', text: statName}), el('td', {text: baseV}),
+      el('td', {text: bonusV}), el('td', {class: 'total', text: fmt(s.total[k] ?? 0, digits)}));
+  });
+  table.replaceChildren(el('thead', {}, head), el('tbody', {}, ...rows));
+}
+
 // Fill a <select> from [{value, label}] or [{group, options}], keeping `value` selected.
 function fillSelect(select, entries, value, emptyLabel) {
   select.replaceChildren();
@@ -280,19 +297,7 @@ function createPanel(container, side, onChange) {
     }
     ui.notices.replaceChildren(...notes.map((n) => el('p', {class: 'notice', text: n})));
 
-    const head = el('tr', {}, ...['stat', 'base', 'bonus', 'total'].map((k) => el('th', {scope: 'col', text: t(k)})));
-    // Mana only means something for mana users; energy users get it relabelled; other resources are hidden.
-    const resource = DATA.champions[state.champ].resource;
-    const shown = (k) => k !== 'mp' || resource === 'Mana' || resource === 'Energy';
-    const rows = STAT_ORDER.filter((k) => shown(k) && ((s.base[k] || 0) || (s.bonus[k] || 0) || (s.total[k] || 0))).map((k) => {
-      const digits = k === 'as' ? 3 : 1;
-      const baseV = s.base[k] ? fmt(s.base[k], digits) : '';
-      const bonusV = s.bonus[k] ? (k === 'as' ? fmt(s.bonus[k]) + '%' : '+' + fmt(s.bonus[k])) : '';
-      const statName = k === 'mp' && resource === 'Energy' ? t('stat_energy') : t('stat_' + k);
-      return el('tr', {}, el('th', {scope: 'row', text: statName}), el('td', {text: baseV}),
-        el('td', {text: bonusV}), el('td', {class: 'total', text: fmt(s.total[k] ?? 0, digits)}));
-    });
-    ui.stats.replaceChildren(el('thead', {}, head), el('tbody', {}, ...rows));
+    fillStatsTable(ui.stats, state.champ, s);
     ui.note.textContent = t('asNote');
     renderCombo();
     if (onChange) onChange();
@@ -418,31 +423,45 @@ function createAdvisor(section) {
     ui.sortLabel.textContent = t('sortBy');
     ui.perGoldText.textContent = t('perGold');
     const by = ui.sort.value || 'offense';
-    fillSelect(ui.sort, [{value: 'offense', label: t('sortOffense')}, {value: 'defense', label: t('sortDefense')}], by);
+    const isStat = !['offense', 'defense'].includes(by);
+    fillSelect(ui.sort, [{group: t('sortCombat'), options: [{value: 'offense', label: t('sortOffense')},
+      {value: 'defense', label: t('sortDefense')}]},
+    {group: t('sortStats'), options: Engine.RANKABLE_STATS.map((k) => ({value: k, label: t('stat_' + k)}))}], by);
     ui.message.textContent = '';
     ui.table.replaceChildren();
     ui.baseline.textContent = '';
     ui.notScored.replaceChildren();
     ui.notScoredTitle.textContent = '';
     ui.notScoredIntro.textContent = '';
-    ui.suggest.disabled = !enemyShown;
-    if (!enemyShown) { ui.message.textContent = t('needEnemy'); return; }
+    ui.suggest.disabled = !enemyShown && !isStat;
+    if (!enemyShown && !isStat) { ui.message.textContent = t('needEnemy'); return; }
     if (!result) return;
-    if (result.error) { ui.message.textContent = t(result.error === 'no_gold' ? 'enterGold' : 'nothingAffordable'); return; }
+    if (result.error) {
+      ui.message.textContent = t(result.error === 'no_gold' ? 'enterGold' : result.error === 'no_enemy' ? 'needEnemy' : 'nothingAffordable');
+      return;
+    }
     if (stale) ui.message.textContent = t('stale');
     const you = panels[0].getSelection(), enemy = panels[1].getSelection();
-    const enemyHp = Engine.championStats(DATA, enemy).total.hp, yourHp = Engine.championStats(DATA, you).total.hp;
     const b = result.baseline;
-    ui.baseline.textContent = t('baseline', {mine: comboText(b.hpLeft, b.killsAt, enemyHp), theirs: comboText(b.yourHpLeft, b.enemyKillsAt, yourHp)});
-    const head = el('thead', {}, el('tr', {}, ...['buy', 'costCol', 'damageGain', 'killStep', 'survivalGain', '', '']
-      .map((k) => el('th', {scope: 'col', text: k ? t(k) : ''}))));
+    const combat = enemyShown && !isStat;
+    if (combat) {
+      const enemyHp = Engine.championStats(DATA, enemy).total.hp, yourHp = Engine.championStats(DATA, you).total.hp;
+      ui.baseline.textContent = t('baseline', {mine: comboText(b.hpLeft, b.killsAt, enemyHp), theirs: comboText(b.yourHpLeft, b.enemyKillsAt, yourHp)});
+    } else {
+      ui.baseline.textContent = t('statBaseline', {stat: t('stat_' + by), value: fmt(b.total[by], by === 'as' ? 3 : 1)});
+    }
+    const cols = combat ? ['buy', 'costCol', 'damageGain', 'killStep', 'survivalGain', '', ''] : ['buy', 'costCol', 'stat_' + by, '', ''];
+    const head = el('thead', {}, el('tr', {}, ...cols.map((k) => el('th', {scope: 'col', text: k ? t(k) : ''}))));
     const rows = Engine.rankBuys(result.rows, by, ui.perGold.checked).map((r) => {
       const what = names(r.buys) + (r.consumed.length ? ` (${t('completes', {items: names(r.consumed)})})` : '');
       const apply = el('button', {type: 'button', text: t('apply'), 'aria-label': `${t('apply')}: ${what}`});
       apply.disabled = stale;
       apply.addEventListener('click', () => panels[0].setItems(r.items, Math.max(0, you.gold - r.cost)));
-      return el('tr', {}, el('td', {text: what}), el('td', {text: fmt(r.cost, 0)}), el('td', {text: '+' + fmt(r.offense, 0)}),
-        el('td', {text: `${b.killsAt ?? '—'} → ${r.killsAt ?? '—'}`}), el('td', {text: '+' + fmt(r.defense, 0)}),
+      const middle = combat
+        ? [el('td', {text: '+' + fmt(r.offense, 0)}), el('td', {text: `${b.killsAt ?? '—'} → ${r.killsAt ?? '—'}`}),
+          el('td', {text: '+' + fmt(r.defense, 0)})]
+        : [el('td', {text: '+' + fmt(r.gains[by], by === 'as' ? 3 : 1)})];
+      return el('tr', {}, el('td', {text: what}), el('td', {text: fmt(r.cost, 0)}), ...middle,
         el('td', {text: r.flags.length ? t('partlyCounted') : ''}), el('td', {}, apply));
     });
     ui.table.replaceChildren(head, el('tbody', {}, ...rows));
@@ -454,14 +473,16 @@ function createAdvisor(section) {
         `${nm(DATA.items[x.id].name)} (${fmt(x.cost, 0)} ${t('gold')})${note(x.id) ? ': ' + note(x.id) : ''}`})));
     }
   }
-  ui.suggest.addEventListener('click', () => {
+  // The search depends on the sort (three-item buys are searched for it), so changing it searches again.
+  const suggest = () => {
     const you = panels[0].getSelection();
-    result = Engine.adviseBuys(DATA, you, panels[1].getSelection(), you.gold);
+    result = Engine.adviseBuys(DATA, you, enemyShown ? panels[1].getSelection() : null, you.gold, {by: ui.sort.value});
     snapshot = choices();
     stale = false;
     render();
-  });
-  ui.sort.addEventListener('change', render);
+  };
+  ui.suggest.addEventListener('click', suggest);
+  ui.sort.addEventListener('change', () => (result ? suggest() : render()));
   ui.perGold.addEventListener('change', render);
   render();
   return {markStale: () => {
@@ -560,9 +581,109 @@ function createRankings(section) {
 }
 let rankings = null;
 
-// Two tabs: the calculator (panels + advisor) and the rankings. The choice is remembered.
+// "Champ Optimization" tab: one champion's best builds for one stat, with the full stats of each.
+function createOptimizer(section) {
+  let result = null, opts = null, shownRow = 0;
+  const num = (attrs) => el('input', {type: 'number', step: 1, ...attrs});
+  const ui = {
+    title: el('h2', {id: 'optimize-title'}), champ: el('select', {id: 'opt-champ'}), stat: el('select', {id: 'opt-stat'}),
+    level: num({id: 'opt-level', min: 1, max: 18, value: 18}), gold: num({id: 'opt-gold', min: 0}),
+    stacks: num({id: 'opt-stacks', min: 0, value: 0}), stacked: el('input', {type: 'checkbox', id: 'opt-stacked'}),
+    stackedText: el('span'), button: el('button', {type: 'button'}), labels: {}, note: el('p', {class: 'note'}),
+    summary: el('p', {class: 'summary'}), build: el('p'), stats: el('table'), altTitle: el('h3'),
+    alts: el('table', {class: 'damage'}), notices: el('div'), time: el('p', {class: 'note'}), open: el('div', {class: 'open-buttons'}),
+  };
+  ui.stacked.checked = true;
+  const field = (key, input) => {
+    const wrap = el('div', {}, (ui.labels[key] = el('label', {for: input.id})), input);
+    return wrap;
+  };
+  const stacksField = field('rankStacks', ui.stacks);
+  section.append(ui.title,
+    el('div', {class: 'rank-form'}, field('champion', ui.champ), field('rankLevel', ui.level), field('rankStat', ui.stat),
+      field('rankMaxGold', ui.gold), stacksField),
+    el('div', {class: 'row combo-add'}, el('label', {class: 'check'}, ui.stacked, ui.stackedText), ui.button),
+    ui.note, ui.summary, ui.build, ui.open, ui.stats, ui.notices, ui.altTitle, el('div', {class: 'table-scroll'}, ui.alts), ui.time);
+  const names = (items) => items.filter(Boolean).map((id) => nm(DATA.items[id].name)).join(', ') || t('none');
+  const digits = (stat) => (stat === 'as' ? 3 : 1);
+
+  function render() {
+    ui.title.textContent = t('optimizeTitle');
+    for (const [k, node] of Object.entries(ui.labels)) node.textContent = t(k);
+    ui.gold.placeholder = t('rankMaxGoldHint');
+    ui.stackedText.textContent = t('stacked');
+    ui.button.textContent = t('optButton');
+    const champs = Object.values(DATA.champions).slice().sort(byName);
+    fillSelect(ui.champ, champs.map((c) => ({value: c.id, label: nm(c.name)})), ui.champ.value || champs[0].id);
+    fillSelect(ui.stat, Engine.RANKABLE_STATS.map((k) => ({value: k, label: t('stat_' + k)})), ui.stat.value || 'hp');
+    stacksField.hidden = !DATA.rules.stackers[ui.champ.value];
+    for (const n of [ui.summary, ui.build, ui.altTitle, ui.time]) n.textContent = '';
+    for (const n of [ui.stats, ui.alts, ui.notices, ui.open]) n.replaceChildren();
+    ui.note.textContent = result ? '' : t('optEmpty');
+    if (!result) return;
+    const champ = DATA.champions[opts.champ];
+    if (!result.rows.length) { ui.note.textContent = t('optNothing'); return; }
+    if (['mp', 'mpregen'].includes(opts.stat) && champ.resource !== 'Mana') ui.note.textContent = t('optNoMana', {champ: nm(champ.name)});
+    const r = result.rows[shownRow];
+    ui.summary.textContent = t('optBest', {champ: nm(champ.name), level: opts.level, value: fmt(r.value, digits(opts.stat)),
+      stat: t('stat_' + opts.stat), cost: fmt(r.cost, 0)});
+    ui.build.textContent = `${t('itemsCol')}: ${names(r.items)}. ${t('runesCol')}: ${runeName(r.runes.keystone)}; `
+      + `${r.runes.shards.map(shardLabel).join(', ')}.`;
+    ui.open.replaceChildren(...['you', 'enemy'].map((who, idx) => {
+      const button = el('button', {type: 'button', text: t('openAs', {who: t(who)})});
+      button.addEventListener('click', () => {
+        if (who === 'enemy') setEnemyShown(true);
+        panels[idx].setBuild({...r, stacked: opts.stacked, stacks: opts.stacks});
+        showTab('calculator');
+        panels[idx].section.scrollIntoView();
+      });
+      return button;
+    }));
+    fillStatsTable(ui.stats, opts.champ, r.stats);
+    ui.notices.replaceChildren(...r.flags.map((f) => {
+      const [, kind, id] = f.split(':');
+      return el('p', {class: 'notice', text: kind === 'champion' ? t('unknownChampion', {champ: nm(DATA.champions[id].name)})
+        : t('unknownPassive', {item: nm(DATA.items[id].name)})});
+    }));
+    if (result.rows.length > 1) {
+      ui.altTitle.textContent = t('optBuilds');
+      const head = el('thead', {}, el('tr', {}, ...['rankCol', 'stat_' + opts.stat, 'costCol', 'itemsCol', '']
+        .map((k) => el('th', {scope: 'col', text: k ? t(k) : ''}))));
+      ui.alts.replaceChildren(head, el('tbody', {}, ...result.rows.map((row, i) => {
+        const show = el('button', {type: 'button', text: t('optShow')});
+        show.disabled = i === shownRow;
+        show.addEventListener('click', () => { shownRow = i; render(); });
+        return el('tr', {}, el('td', {text: String(i + 1)}), el('td', {class: 'total', text: fmt(row.value, digits(opts.stat))}),
+          el('td', {text: fmt(row.cost, 0)}), el('td', {text: names(row.items)}), el('td', {}, show));
+      })));
+    }
+    ui.time.textContent = t('rankTime', {s: fmt(result.ms / 1000, 1)});
+  }
+
+  ui.champ.addEventListener('change', () => { stacksField.hidden = !DATA.rules.stackers[ui.champ.value]; });
+  ui.button.addEventListener('click', () => {
+    opts = {champ: ui.champ.value, stat: ui.stat.value, level: Engine.clampLevel(ui.level.value),
+      maxGold: Number(ui.gold.value) > 0 ? Number(ui.gold.value) : null, stacked: ui.stacked.checked,
+      stacks: DATA.rules.stackers[ui.champ.value] ? Math.max(0, Math.round(Number(ui.stacks.value)) || 0) : 0, count: 5};
+    ui.level.value = opts.level;
+    ui.button.disabled = true;
+    setTimeout(() => { // let the disabled button paint before the search blocks for a moment
+      result = Engine.optimizeChampion(DATA, opts);
+      shownRow = 0;
+      ui.button.disabled = false;
+      render();
+    }, 20);
+  });
+  render();
+  return {setLang: render};
+}
+let optimizer = null;
+
+// Tabs: the calculator (panels + advisor), the rankings and the champion optimizer. The choice is remembered.
+// Only tabs present in the page: a cached older index.html next to a newer app.js must not break the page.
+const TABS = ['calculator', 'rankings', 'optimize'].filter((id) => document.getElementById(id) && document.getElementById('tab-' + id));
 function showTab(name) {
-  for (const [tab, panel] of [['calculator', 'calculator'], ['rankings', 'rankings']]) {
+  for (const [tab, panel] of TABS.map((x) => [x, x])) {
     const selected = tab === name;
     document.getElementById('tab-' + tab).setAttribute('aria-selected', String(selected));
     document.getElementById('tab-' + tab).tabIndex = selected ? 0 : -1;
@@ -598,8 +719,10 @@ function renderPage() {
   panels.forEach((p) => p.setLang());
   if (advisor) advisor.setLang();
   if (rankings) rankings.setLang();
+  if (optimizer) optimizer.setLang();
   document.getElementById('tab-calculator').textContent = t('tabCalculator');
   document.getElementById('tab-rankings').textContent = t('tabRankings');
+  if (optimizer) document.getElementById('tab-optimize').textContent = t('tabOptimize');
   addEnemyButton.textContent = t('addEnemy');
 }
 
@@ -620,16 +743,17 @@ panels.push(createPanel(container, 'enemy', renderMatchup));
 advisor = createAdvisor(document.getElementById('advisor'));
 setEnemyShown(enemyShown);
 rankings = createRankings(document.getElementById('rankings'));
-for (const name of ['calculator', 'rankings']) {
+if (TABS.includes('optimize')) optimizer = createOptimizer(document.getElementById('optimize'));
+TABS.forEach((name, i) => {
   const tab = document.getElementById('tab-' + name);
   tab.addEventListener('click', () => showTab(name));
   tab.addEventListener('keydown', (e) => {
     if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') {
-      const other = name === 'calculator' ? 'rankings' : 'calculator';
+      const other = TABS[(i + (e.key === 'ArrowRight' ? 1 : TABS.length - 1)) % TABS.length];
       showTab(other);
       document.getElementById('tab-' + other).focus();
     }
   });
-}
-showTab((() => { try { return storage.getItem('tab') === 'rankings' ? 'rankings' : 'calculator'; } catch { return 'calculator'; } })());
+});
+showTab((() => { try { const s = storage.getItem('tab'); return TABS.includes(s) ? s : 'calculator'; } catch { return 'calculator'; } })());
 renderPage();

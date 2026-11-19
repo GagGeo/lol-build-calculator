@@ -673,19 +673,25 @@ const Engine = (() => {
 
   // Every affordable purchase (singles, all pairs, triples from the best singles), scored against the
   // panels' current choices: offense = enemy HP your combo removes in addition; defense = your HP saved.
+  // opts.by: 'offense', 'defense' or a stat key (RANKABLE_STATS): the triples are searched for it. Without an
+  // enemy only stats are scored. Every row carries `gains`: each rankable stat's total after minus before.
   function adviseBuys(data, you, enemy, gold, opts = {}) {
     const tripleFrom = opts.tripleFrom ?? 20;
+    const by = opts.by || 'offense';
     const g = gold === '' || gold === null || gold === undefined ? NaN : Number(gold);
     if (!Number.isFinite(g) || g <= 0) return {rows: [], notScored: [], baseline: null, error: 'no_gold'};
+    if (!enemy && !RANKABLE_STATS.includes(by)) return {rows: [], notScored: [], baseline: null, error: 'no_enemy'};
     const rules = data.rules;
-    const enemyStats = championStats(data, enemy);
+    const enemyStats = enemy && championStats(data, enemy);
     const score = (items) => {
       const stats = championStats(data, {...you, items});
+      const total = Object.fromEntries(RANKABLE_STATS.map((k) => [k, stats.total[k] || 0]));
+      if (!enemy) return {total, hpLeft: 0, killsAt: null, yourHpLeft: 0, enemyKillsAt: null};
       const mine = runCombo(data, {...you, items, stats}, {champ: enemy.champ, stats: enemyStats, currentHpPct: enemy.currentHpPct,
         items: enemy.items}, you.combo);
       const theirs = runCombo(data, {...enemy, stats: enemyStats}, {champ: you.champ, stats, currentHpPct: you.currentHpPct, items},
         enemy.combo);
-      return {hpLeft: mine.hpLeft, killsAt: mine.killsAt, yourHpLeft: theirs.hpLeft, enemyKillsAt: theirs.killsAt};
+      return {total, hpLeft: mine.hpLeft, killsAt: mine.killsAt, yourHpLeft: theirs.hpLeft, enemyKillsAt: theirs.killsAt};
     };
     const baseline = score(you.items);
     const notScoredIds = new Set(rules.advisorNotScored || []);
@@ -699,6 +705,7 @@ const Engine = (() => {
       const row = {buys, items: result.items, cost: result.cost, consumed: result.consumed,
         offense: baseline.hpLeft - s.hpLeft, killsAt: s.killsAt,
         defense: s.yourHpLeft - baseline.yourHpLeft, enemyKillsAt: s.enemyKillsAt,
+        gains: Object.fromEntries(RANKABLE_STATS.map((k) => [k, s.total[k] - baseline.total[k]])),
         flags: buys.filter((id) => partly.has(id)).map((id) => 'partly_counted:' + id)};
       byInventory.set(key, row);
       return row;
@@ -737,8 +744,9 @@ const Engine = (() => {
       if (singles[i].cost + cheapest > g) continue;
       for (let j = i; j < singles.length; j++) tryAll([singles[i].buys[0], singles[j].buys[0]]);
     }
-    const best = (key) => singles.slice().sort((x, y) => y[key] - x[key]).slice(0, tripleFrom).map((s) => s.buys[0]);
-    const top = [...new Set([...best('offense'), ...best('defense')])];
+    const gainOf = (row, key) => (key in row ? row[key] : row.gains[key]);
+    const best = (key) => singles.slice().sort((x, y) => gainOf(y, key) - gainOf(x, key)).slice(0, tripleFrom).map((s) => s.buys[0]);
+    const top = [...new Set(RANKABLE_STATS.includes(by) ? best(by) : [...best('offense'), ...best('defense')])];
     for (let i = 0; i < top.length; i++) {
       for (let j = i; j < top.length; j++) {
         for (let k = j; k < top.length; k++) tryAll([top[i], top[j], top[k]]);
@@ -751,8 +759,9 @@ const Engine = (() => {
   }
 
   function rankBuys(rows, by, perGold, top = 20) {
-    const value = (r) => r[by] * (perGold ? 100 / Math.max(r.cost, 1) : 1);
-    const killRank = (r) => (by === 'offense' ? (r.killsAt ?? Infinity) : -(r.enemyKillsAt ?? Infinity));
+    const isStat = !['offense', 'defense'].includes(by);
+    const value = (r) => (isStat ? r.gains[by] : r[by]) * (perGold ? 100 / Math.max(r.cost, 1) : 1);
+    const killRank = (r) => (isStat ? 0 : by === 'offense' ? (r.killsAt ?? Infinity) : -(r.enemyKillsAt ?? Infinity));
     return rows.slice().sort((a, b) => value(b) - value(a) || killRank(a) - killRank(b) || a.cost - b.cost
       || (a.buys || []).length - (b.buys || []).length).slice(0, top);
   }
@@ -769,7 +778,7 @@ const Engine = (() => {
     const level = clampLevel(opts.level ?? 18);
     const maxGold = opts.maxGold > 0 ? opts.maxGold : Infinity;
     const value = (items) => championStats(data, {champ: ref, level, items, runes: null,
-      stacked: opts.stacked ?? true, stacks: 0}).total[opts.stat] || 0;
+      stacked: opts.stacked ?? true, stacks: opts.stacks || 0}).total[opts.stat] || 0;
     const base = value([]);
     const all = Object.keys(data.items)
       .filter((id) => data.items[id].tier !== 7 && data.items[id].gold.total <= maxGold
@@ -900,7 +909,29 @@ const Engine = (() => {
     return {rows: rows.slice(0, count), ms: Date.now() - t0};
   }
 
-  return {RANKABLE_STATS, bestBuilds, bestRunePage, rankStat, adviseBuys, rankBuys, purchase, growth, clampLevel, championStats, ultRank, validateBuild, allowedItems, pruneBuild,
+  // One champion's best builds for one stat: items searched on that champion, then the best rune page for
+  // each. Rows best first (ties: cheaper first), each with its full stats.
+  function optimizeChampion(data, opts) {
+    const t0 = Date.now();
+    const {champ, stat} = opts;
+    const level = clampLevel(opts.level ?? 18);
+    const count = Math.min(20, Math.max(1, Math.round(Number(opts.count ?? 5)) || 1));
+    const stacked = opts.stacked ?? true;
+    const stacks = Math.max(0, Math.round(Number(opts.stacks)) || 0);
+    const maxGold = Number(opts.maxGold) > 0 ? Number(opts.maxGold) : null;
+    const sel = {champ, level, runes: null, stacked, stacks};
+    const rows = bestBuilds(data, {stat, level, maxGold, stacked, stacks}, champ).slice(0, count * 2).map((b) => {
+      const runes = bestRunePage(data, {...sel, items: b.items}, stat);
+      const stats = championStats(data, {...sel, items: b.items, runes});
+      const flags = stats.flags.map((f) => (f.startsWith('unknown_passive:') ? 'partly_counted:item:' + f.split(':')[1]
+        : 'partly_counted:champion:' + f.split(':')[1]));
+      return {champ, level, items: b.items, runes, cost: b.cost, value: stats.total[stat] || 0, stats, flags};
+    });
+    rows.sort((a, b) => b.value - a.value || a.cost - b.cost);
+    return {rows: rows.slice(0, count), ms: Date.now() - t0};
+  }
+
+  return {RANKABLE_STATS, bestBuilds, bestRunePage, rankStat, optimizeChampion, adviseBuys, rankBuys, purchase, growth, clampLevel, championStats, ultRank, validateBuild, allowedItems, pruneBuild,
           validateRunePage, normalizeRunePage, buildCost, goldWarning, evalCalc, skillRanks,
           mitigate, autoAttack, spellDamage, runCombo, DEFAULT_COMBO, defaultCombo, clampPct, spellHeal};
 })();

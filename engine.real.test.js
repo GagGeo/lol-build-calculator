@@ -185,3 +185,34 @@ test('spell heals land in the combo row of that spell', () => {
   const r = Engine.runCombo(D, healSide('Warwick'), healSide('Garen'), [{spell: 'Q'}]);
   assert.ok(r.rows[0].healed > 0 && Math.abs(r.healed - r.rows[0].healed) < 1e-9);
 });
+
+// --- Advisor by stat, champion optimization -----------------------------------------------------------
+test('advisor ranks by any stat, with or without an enemy', () => {
+  const sel = (champ) => ({champ, level: 9, items: [null, null, null, null, null, null], runes: null, stacked: false,
+    stacks: 0, combo: Engine.DEFAULT_COMBO, currentHpPct: 100});
+  for (const enemy of [null, sel('Annie')]) {
+    const a = Engine.adviseBuys(D, sel('Garen'), enemy, 3000, {by: 'armor'});
+    const top = Engine.rankBuys(a.rows, 'armor', false);
+    assert.ok(top[0].gains.armor > 0);
+    assert.ok(top.every((r, i) => !i || r.gains.armor <= top[i - 1].gains.armor));
+    assert.ok(top[0].cost <= 3000);
+  }
+  assert.equal(Engine.adviseBuys(D, sel('Garen'), null, 3000, {by: 'offense'}).error, 'no_enemy');
+});
+test('champion optimization: best build first, legal, within gold, full stats', () => {
+  const r = Engine.optimizeChampion(D, {champ: 'Garen', level: 18, stat: 'hp', maxGold: 10000, count: 5});
+  assert.ok(r.rows.length >= 1 && r.rows.length <= 5);
+  for (const row of r.rows) {
+    assert.deepEqual(Engine.validateBuild(D, 'Garen', row.items), []);
+    assert.deepEqual(Engine.validateRunePage(D, row.runes), []);
+    assert.ok(row.cost <= 10000);
+    assert.equal(row.value, row.stats.total.hp);
+  }
+  assert.ok(r.rows.every((row, i) => !i || row.value <= r.rows[i - 1].value));
+  const bare = Engine.championStats(D, {champ: 'Garen', level: 18, items: [], runes: null}).total.hp;
+  assert.ok(r.rows[0].value > bare + 2000);
+});
+test('champion optimization counts champion stacks', () => {
+  const at = (stacks) => Engine.optimizeChampion(D, {champ: 'Veigar', level: 18, stat: 'ap', maxGold: 3000, stacks, count: 1}).rows[0].value;
+  assert.ok(Math.abs(at(200) - at(0)) >= 200);
+});
