@@ -873,16 +873,32 @@ function createGuideTab(section) {
     update();
     return el('div', {class: 'guide-try'}, el('p', {class: 'guide-label', text: t('guideExample')}), ...inputs, rows, note);
   }
+  // One sub tab per group (Basic attacks, Abilities…); the one shown is remembered.
+  let current = (() => { try { return Math.max(0, GUIDE.GROUPS.findIndex((g) => g.en === storage.getItem('guideGroup'))); } catch { return 0; } })();
+  function select(i, focus) {
+    current = i;
+    try { storage.setItem('guideGroup', GUIDE.GROUPS[i].en); } catch { /* storage blocked: choice lasts for this visit */ }
+    render();
+    if (focus) section.querySelector('#guide-tab-' + i).focus();
+  }
   function render() {
-    const cards = GUIDE.GROUPS.map((group) => [el('h3', {text: pick(group)}), el('div', {class: 'guide-cards'},
-      ...group.stats.map((card) => el('article', {class: 'item-card', id: 'guide-' + card.key},
-        el('h4', {text: t('stat_' + card.key)}), el('p', {text: pick(card.what)}),
-        el('p', {class: 'guide-label', text: t('guideWith')}), el('ul', {}, ...card.with.map((w) => el('li', {text: pick(w)}))),
-        ...(card.example ? [example(card)] : []),
-        el('p', {class: 'note'}, outLink(GUIDE.WIKI + card.wiki, t('guideWiki'))))))]);
-    const jump = GUIDE.GROUPS.flatMap((g) => g.stats).map((c) => el('a', {href: '#guide-' + c.key, text: t('stat_' + c.key)}));
+    const tabs = GUIDE.GROUPS.map((group, i) => {
+      const b = el('button', {type: 'button', role: 'tab', id: 'guide-tab-' + i, 'aria-controls': 'guide-cards',
+        'aria-selected': String(i === current), tabindex: i === current ? 0 : -1, text: pick(group)});
+      b.addEventListener('click', () => select(i));
+      b.addEventListener('keydown', (e) => {
+        if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') select((i + (e.key === 'ArrowRight' ? 1 : GUIDE.GROUPS.length - 1)) % GUIDE.GROUPS.length, true);
+      });
+      return b;
+    });
+    const cards = GUIDE.GROUPS[current].stats.map((card) => el('article', {class: 'item-card', id: 'guide-' + card.key},
+      el('h4', {text: t('stat_' + card.key)}), el('p', {text: pick(card.what)}),
+      el('p', {class: 'guide-label', text: t('guideWith')}), el('ul', {}, ...card.with.map((w) => el('li', {text: pick(w)}))),
+      ...(card.example ? [example(card)] : []),
+      el('p', {class: 'note'}, outLink(GUIDE.WIKI + card.wiki, t('guideWiki')))));
     section.replaceChildren(el('h2', {text: t('guideTitle')}), el('div', {},
-      el('p', {text: t('guideIntro')}), el('nav', {class: 'guide-jump'}, ...jump), ...cards.flat()));
+      el('p', {text: t('guideIntro')}), el('div', {class: 'subtabs', role: 'tablist', 'aria-label': t('guideTitle')}, ...tabs),
+      el('div', {class: 'guide-cards', id: 'guide-cards', role: 'tabpanel', 'aria-labelledby': 'guide-tab-' + current}, ...cards)));
   }
   render();
   return {setLang: render};

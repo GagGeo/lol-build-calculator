@@ -220,7 +220,7 @@ const GUIDE = (() => {
         with: [
           {en: 'Best against low-armor targets (mages, marksmen).', fr: 'Idéale contre les cibles à peu d\'armure (mages, tireurs).'},
           {en: 'Applied after armor penetration %. It can\'t bring armor below 0.', fr: 'Appliquée après la pénétration d\'armure %. Elle ne descend pas l\'armure sous 0.'},
-          {en: 'Try it in the example under Armor.', fr: 'Essayez-la dans l\'exemple sous Armure.'},
+          {en: 'Try it in the Armor example (Defense tab).', fr: 'Essayez-la dans l\'exemple Armure (onglet Défense).'},
         ]},
       {key: 'armorPenPct', wiki: 'Armor_penetration',
         what: {en: 'Ignores a percentage of the enemy\'s armor. The more armor they have, the more it removes.',
@@ -228,20 +228,20 @@ const GUIDE = (() => {
         with: [
           {en: 'Best against tanks.', fr: 'Idéale contre les tanks.'},
           {en: 'Applied before lethality.', fr: 'Appliquée avant la létalité.'},
-          {en: 'Try it in the example under Armor.', fr: 'Essayez-la dans l\'exemple sous Armure.'},
+          {en: 'Try it in the Armor example (Defense tab).', fr: 'Essayez-la dans l\'exemple Armure (onglet Défense).'},
         ]},
       {key: 'magicPen', wiki: 'Magic_penetration',
         what: {en: 'Ignores a fixed amount of the enemy\'s magic resist, like lethality does for armor.',
           fr: 'Ignore une quantité fixe de la résistance magique adverse, comme la létalité pour l\'armure.'},
         with: [
           {en: 'Best against low magic resist targets. Applied after magic penetration %.', fr: 'Idéale contre les cibles à peu de résistance magique. Appliquée après la pénétration magique %.'},
-          {en: 'Try it in the example under Magic Resist.', fr: 'Essayez-la dans l\'exemple sous Résistance magique.'},
+          {en: 'Try it in the Magic Resist example (Defense tab).', fr: 'Essayez-la dans l\'exemple Résistance magique (onglet Défense).'},
         ]},
       {key: 'magicPenPct', wiki: 'Magic_penetration',
         what: {en: 'Ignores a percentage of the enemy\'s magic resist.', fr: 'Ignore un pourcentage de la résistance magique adverse.'},
         with: [
           {en: 'Best against tanks. Applied before flat magic penetration.', fr: 'Idéale contre les tanks. Appliquée avant la pénétration magique fixe.'},
-          {en: 'Try it in the example under Magic Resist.', fr: 'Essayez-la dans l\'exemple sous Résistance magique.'},
+          {en: 'Try it in the Magic Resist example (Defense tab).', fr: 'Essayez-la dans l\'exemple Résistance magique (onglet Défense).'},
         ]},
     ]},
     {en: 'Defense', fr: 'Défense', stats: [

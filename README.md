@@ -23,7 +23,7 @@ To share it, send that link.
 - **Rankings** (second tab): pick a stat, for example Health or Move Speed. You get the champions and builds (level, 6 items, rune page) that reach the most of it, 10 by default. You can also set a gold limit. **Open as You** or **Open as Enemy** loads a row into the calculator.
 - **Champ Optimization** (third tab): pick a champion, a level and a stat, and optionally a gold limit and the champion's stacks. You get the build (6 items and a rune page) that reaches the most of it, its cost and all its stats, plus the next best builds. Untick an item to see the stats without it; **Item details** opens it in the Items tab.
 - **Items** (fourth tab): every item, searchable, filtered by type or stat and sorted by price or gold efficiency. Click one for its stats, cost, build path, limits, what the calculator counts and its description.
-- **Stats explained** (fifth tab): what each stat does and how it works with the others, for newer players, with small examples you can move with sliders.
+- **Stats explained** (fifth tab): what each stat does and how it works with the others, for newer players, one sub tab per category (Basic attacks, Abilities, Defense…), with small examples you can move with sliders.
 - **Sources** (sixth tab): where the data and formulas come from, with links.
 - In any stats table, **Show details** splits the bonus into one column per item, the runes and the champion.
 
@@ -93,7 +93,7 @@ Pour le partager, envoyez ce lien.
 - **Classements** (second onglet) : choisissez une statistique, par exemple Points de vie ou Vitesse de déplacement. Vous obtenez les champions et les builds (niveau, 6 objets, page de runes) qui en atteignent le plus, 10 par défaut. Vous pouvez aussi fixer une limite d'or. **Ouvrir pour Vous** ou **Ouvrir pour Adversaire** charge une ligne dans le calculateur.
 - **Optimisation** (troisième onglet) : choisissez un champion, un niveau et une statistique, et si vous voulez une limite d'or et les cumuls du champion. Vous obtenez le build (6 objets et une page de runes) qui en atteint le plus, son coût et toutes ses statistiques, ainsi que les builds suivants. Décochez un objet pour voir les statistiques sans lui ; **Détails de l'objet** l'ouvre dans l'onglet Objets.
 - **Objets** (quatrième onglet) : tous les objets, avec recherche, filtre par type ou statistique et tri par prix ou rentabilité. Cliquez sur un objet pour ses statistiques, son coût, ses composants, ses limites, ce que le calculateur compte et sa description.
-- **Les stats expliquées** (cinquième onglet) : à quoi sert chaque stat et comment elle agit avec les autres, pour les joueurs débutants, avec de petits exemples à curseurs.
+- **Les stats expliquées** (cinquième onglet) : à quoi sert chaque stat et comment elle agit avec les autres, pour les joueurs débutants, un sous-onglet par catégorie (Attaques de base, Sorts, Défense…), avec de petits exemples à curseurs.
 - **Sources** (sixième onglet) : d'où viennent les données et les formules, avec des liens.
 - Dans tout tableau de statistiques, **Afficher le détail** répartit le bonus en une colonne par objet, les runes et le champion.
 
