@@ -273,3 +273,16 @@ test('counter advice reads both combos', () => {
   const vamp = Engine.counterAdvice(D, sel('Lux', []), sel('Jinx', ids(/^Bloodthirster$/)));
   assert.ok(vamp.some((a) => a.id === 'heals'), 'life steal: Grievous Wounds');
 });
+
+test('kit scaling: the best stat for a few clear-cut kits', () => {
+  assert.equal(Engine.kitScaling(D, 'Annie').stats[0].stat, 'ap');
+  assert.equal(Engine.kitScaling(D, 'Lux').stats[0].stat, 'ap');
+  assert.equal(Engine.kitScaling(D, 'Garen').stats[0].stat, 'ad');
+  for (const id of Object.keys(D.champions)) assert.ok(Array.isArray(Engine.kitScaling(D, id).stats), id);
+});
+
+test('champion roles come with the data', () => {
+  assert.ok(D.champions.Jinx.positions.includes('BOTTOM'));
+  assert.ok(D.champions.Garen.positions.includes('TOP'));
+  assert.ok(Object.values(D.champions).filter((c) => c.positions.length).length > 150);
+});

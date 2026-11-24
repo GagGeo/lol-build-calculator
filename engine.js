@@ -1029,6 +1029,29 @@ const Engine = (() => {
     return prices;
   }
 
+  // What a champion's kit scales with: its abilities' damage in the default combo at `level` (no items, runes or
+  // basic attacks, against a target with no resists that can't die), then again with 1000 gold of each stat added.
+  // Best stat first. Basic attacks would make every champion look like an AD champion.
+  // Attack speed and ability haste are left out: they add attacks and casts over time, which one combo doesn't count.
+  const SCALING_STATS = ['ad', 'ap', 'hp', 'armor', 'mr', 'crit'];
+  function kitScaling(data, champId, level = 18) {
+    const prices = statGoldPrices(data);
+    const target = {champ: champId, stats: {base: {}, bonus: {}, total: {hp: 1e9, armor: 0, mr: 0}}, currentHpPct: 100, items: []};
+    let excluded = [];
+    const damage = (add) => {
+      const d = {...data, rules: {...data.rules, buffs: [{id: 'probe', add}]}};
+      const sel = {champ: champId, level, items: [], runes: null, stacked: false, stacks: 0, buffs: {probe: 1}};
+      const c = runCombo(d, {...sel, stats: championStats(d, sel)}, target, defaultCombo(d, champId).filter((x) => x.spell));
+      excluded = c.excluded;
+      return c.hpStart - c.hpLeft;
+    };
+    const before = damage({});
+    const stats = SCALING_STATS.filter((k) => prices[k])
+      .map((k) => ({stat: k, gain: damage({[k]: 1000 / prices[k]}) - before}))
+      .filter((x) => x.gain >= 5).sort((a, b) => b.gain - a.gain); // under 5 damage per 1000 gold: noise
+    return {stats, damage: before, excluded};
+  }
+
   // An item's stats in gold (at those prices) over its cost. Stats without a price are listed in `unpriced`;
   // passives are not priced.
   function goldEfficiency(data, id) {
@@ -1043,7 +1066,7 @@ const Engine = (() => {
 
   return {RANKABLE_STATS, bestBuilds, bestRunePage, rankStat, optimizeChampion, statBreakdown, statGoldPrices, goldEfficiency, adviseBuys, rankBuys, purchase, growth, capMoveSpeed, clampLevel, championStats, ultRank, validateBuild, allowedItems, pruneBuild,
           validateRunePage, normalizeRunePage, buildCost, goldWarning, evalCalc, skillRanks,
-          mitigate, autoAttack, spellDamage, runCombo, counterAdvice, DEFAULT_COMBO, defaultCombo, clampPct, spellHeal};
+          mitigate, autoAttack, spellDamage, runCombo, counterAdvice, kitScaling, DEFAULT_COMBO, defaultCombo, clampPct, spellHeal};
 })();
 
 if (typeof module === 'object') module.exports = Engine;

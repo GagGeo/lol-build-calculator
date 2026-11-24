@@ -1,6 +1,6 @@
 import unittest
 
-from prep import parse_item_stats, build_items, build_runes, build_champions, diff_patches, normalize_calc, parse_damage_lines, build_spells, skill_rank_flags, passive_stat_words, parse_heal_lines
+from prep import attach_positions, parse_item_stats, build_items, build_runes, build_champions, diff_patches, normalize_calc, parse_damage_lines, build_spells, skill_rank_flags, passive_stat_words, parse_heal_lines
 
 CLEAVER = ("<mainText><stats><attention>45</attention> Attack Damage<br>"
            "<attention>400</attention> Health<br><attention>20</attention> Ability Haste"
@@ -549,6 +549,16 @@ class BuildSpells(unittest.TestCase):
     def test_skill_rank_flags(self):
         self.assertEqual(skill_rank_flags(self.spells), [])
         self.assertEqual(skill_rank_flags([{"key": "Q", "maxrank": 6}, {"key": "R", "maxrank": 3}]), ["custom_skill_ranks"])
+
+
+
+class AttachPositionsTest(unittest.TestCase):
+    def test_positions_and_missing(self):
+        champs = {"Garen": {}, "Newbie": {}}
+        missing = attach_positions(champs, {"Garen": {"positions": ["TOP", "ODD"]}})
+        self.assertEqual(champs["Garen"]["positions"], ["TOP"])
+        self.assertEqual(champs["Newbie"]["positions"], [])
+        self.assertEqual(missing, ["Newbie"])
 
 
 if __name__ == "__main__":

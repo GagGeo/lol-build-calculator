@@ -211,8 +211,8 @@ function createPanel(container, side, onChange) {
   ui.slots.forEach((s, i) => s.setAttribute('aria-label', `${t('items')} ${i + 1}`));
 
   // --- events -------------------------------------------------------------
-  ui.champ.addEventListener('change', () => {
-    switchChamp(ui.champ.value);
+  const chooseChamp = (champ) => {
+    switchChamp(champ);
     state.stacks = 0; // stacks belong to one champion's passive
     const pruned = Engine.pruneBuild(DATA, state.champ, state.items);
     state.items = pruned.items;
@@ -220,7 +220,8 @@ function createPanel(container, side, onChange) {
       ? t('removed', {champ: nm(DATA.champions[state.champ].name), items: pruned.removed.map((id) => nm(DATA.items[id].name)).join(', ')})
       : '';
     render();
-  });
+  };
+  ui.champ.addEventListener('change', () => chooseChamp(ui.champ.value));
   const setLevel = (v) => { state.level = Engine.clampLevel(v); render(); };
   ui.range.addEventListener('input', () => setLevel(ui.range.value));
   ui.number.addEventListener('change', () => setLevel(ui.number.value));
@@ -375,7 +376,7 @@ function createPanel(container, side, onChange) {
 
   render();
   return {getSelection: () => ({...state, items: state.items.slice(), buffs: {...state.buffs}, combo: state.combo.map((s) => ({...s}))}),
-          setLang: render, results: ui.results, section,
+          setLang: render, results: ui.results, section, setChamp: chooseChamp,
           setItems: (items, gold) => { state.items = items.slice(); if (gold !== undefined) state.gold = gold; removedNotice = ''; render(); },
           // Load a whole build (from the rankings); rows are already legal for their champion.
           setBuild: (b) => {
@@ -910,6 +911,91 @@ function createItemsTab(section) {
 }
 let itemsTab = null;
 
+// "Champions" tab: usual roles (Meraki, see prep.py), Riot's classes, and what each kit scales with
+// (Engine.kitScaling, measured with the calculator's own damage). A card on top for the champion picked.
+function createChampionsTab(section) {
+  let selected = null;
+  const scaling = new Map(); // champion id -> kitScaling result (the data never changes on the page)
+  const scaleOf = (id) => scaling.get(id) || scaling.set(id, Engine.kitScaling(DATA, id)).get(id);
+  const ROLES = ['TOP', 'JUNGLE', 'MIDDLE', 'BOTTOM', 'SUPPORT'];
+  const ui = {
+    title: el('h2', {id: 'champions-title'}), search: el('input', {type: 'search', id: 'champs-search'}),
+    role: el('select', {id: 'champs-role'}), labels: {}, card: el('article', {class: 'item-card', tabindex: -1}),
+    count: el('p', {class: 'note'}), table: el('table', {class: 'damage'}), note: el('p', {class: 'note'}),
+  };
+  const field = (key, input) => el('div', {}, (ui.labels[key] = el('label', {for: input.id})), input);
+  section.append(ui.title, ui.card, el('div', {class: 'rank-form'}, field('itemsSearch', ui.search), field('champRole', ui.role)),
+    ui.count, el('div', {class: 'table-scroll'}, ui.table), ui.note);
+  const roles = (c) => (c.positions || []).map((p) => t('role_' + p)).join(', ') || t('roleUnknown');
+  const classes = (c) => (c.tags || []).map((x) => t('tag_' + x)).join(', ');
+  // The stats worth naming: the best one, and others giving at least a quarter of its damage.
+  const top = (id) => { const s = scaleOf(id).stats; return s.filter((x) => x.gain >= s[0].gain / 4).slice(0, 3); };
+  const scalesText = (id) => (scaleOf(id).stats.length ? top(id).map((x) => t('stat_' + x.stat)).join(', ') : '—');
+  const link = (id) => linkButton(nm(DATA.champions[id].name), () => open(id));
+
+  function renderCard() {
+    ui.card.hidden = !selected;
+    if (!selected) return;
+    const c = DATA.champions[selected], s = scaleOf(selected);
+    const parts = [el('h3', {text: nm(c.name)}), el('p', {class: 'note', text: nm(c.title)}),
+      el('p', {text: `${t('champRole')}: ${roles(c)}`}), el('p', {text: `${t('champClass')}: ${classes(c)}`}),
+      el('h4', {text: t('champScales')})];
+    if ((c.tags || []).includes('Marksman')) parts.push(el('p', {text: t('champMarksman')}));
+    if (s.stats.length) {
+      parts.push(el('ul', {}, ...top(selected).map((x) => el('li', {text: t('champScalesLine', {stat: t('stat_' + x.stat), gain: fmt(x.gain, 0)})}))));
+    } else parts.push(el('p', {class: 'notice', text: t('champNoScaling')}));
+    const names = s.excluded.map((k) => (k === 'P' ? t('passive') : k));
+    if (s.excluded.length && s.stats.length) parts.push(el('p', {class: 'notice', text: t('champExcluded', {spells: names.join(', ')})}));
+    parts.push(el('p', {class: 'note', text: t('champScalesNote')}));
+    const openAs = (idx, who) => {
+      const b = el('button', {type: 'button', text: t('openAs', {who: t(who)})});
+      b.addEventListener('click', () => {
+        if (idx === 1) setEnemyShown(true);
+        panels[idx].setChamp(selected);
+        showTab('calculator');
+        panels[idx].section.scrollIntoView();
+      });
+      return b;
+    };
+    parts.push(el('div', {class: 'row combo-add'}, openAs(0, 'you'), openAs(1, 'enemy')));
+    ui.card.replaceChildren(...parts);
+  }
+
+  function render() {
+    ui.title.textContent = t('tabChampions');
+    for (const [k, node] of Object.entries(ui.labels)) node.textContent = t(k);
+    ui.search.placeholder = t('champSearchHint');
+    fillSelect(ui.role, [{value: '', label: t('champAllRoles')}, ...ROLES.map((r) => ({value: r, label: t('role_' + r)}))], ui.role.value);
+    const query = ui.search.value.trim().toLowerCase();
+    const ids = Object.keys(DATA.champions).filter((id) => {
+      const c = DATA.champions[id];
+      return (!query || nm(c.name).toLowerCase().includes(query)) && (!ui.role.value || (c.positions || []).includes(ui.role.value));
+    }).sort((a, b) => byName(DATA.champions[a], DATA.champions[b]));
+    ui.count.textContent = t('champsCount', {n: ids.length});
+    const head = el('thead', {}, el('tr', {}, ...['champion', 'champRole', 'champClass', 'champScales']
+      .map((k) => el('th', {scope: 'col', text: t(k)}))));
+    ui.table.replaceChildren(head, el('tbody', {}, ...ids.map((id) => {
+      const c = DATA.champions[id];
+      return el('tr', {}, el('th', {scope: 'row'}, link(id)), el('td', {text: roles(c)}), el('td', {text: classes(c)}),
+        el('td', {text: scalesText(id)}));
+    })));
+    ui.note.textContent = t('champRoleNote');
+    renderCard();
+  }
+
+  function open(id) {
+    selected = id;
+    render();
+    ui.card.scrollIntoView({behavior: 'smooth', block: 'start'});
+    ui.card.focus({preventScroll: true});
+  }
+  ui.role.addEventListener('change', render);
+  ui.search.addEventListener('input', render);
+  render();
+  return {setLang: render};
+}
+let championsTab = null;
+
 // "Stats explained" tab: one card per stat (what it does, what it works with) and live examples computed with
 // the calculator's own formulas (guide.js). Slider positions survive a language switch.
 const pick = (text) => text[lang] || text.en;
@@ -1042,7 +1128,7 @@ let sourcesTab = null;
 
 // Tabs: the calculator (panels + advisor), the rankings and the champion optimizer. The choice is remembered.
 // Only tabs present in the page: a cached older index.html next to a newer app.js must not break the page.
-const TABS = ['calculator', 'rankings', 'optimize', 'items', 'guide', 'sources'].filter((id) => document.getElementById(id) && document.getElementById('tab-' + id));
+const TABS = ['calculator', 'rankings', 'optimize', 'items', 'champions', 'guide', 'sources'].filter((id) => document.getElementById(id) && document.getElementById('tab-' + id));
 function showTab(name) {
   for (const [tab, panel] of TABS.map((x) => [x, x])) {
     const selected = tab === name;
@@ -1102,12 +1188,14 @@ function renderPage() {
   if (rankings) rankings.setLang();
   if (optimizer) optimizer.setLang();
   if (itemsTab) itemsTab.setLang();
+  if (championsTab) championsTab.setLang();
   if (guideTab) guideTab.setLang();
   if (sourcesTab) sourcesTab.setLang();
   document.getElementById('tab-calculator').textContent = t('tabCalculator');
   document.getElementById('tab-rankings').textContent = t('tabRankings');
   if (optimizer) document.getElementById('tab-optimize').textContent = t('tabOptimize');
   if (itemsTab) document.getElementById('tab-items').textContent = t('tabItems');
+  if (championsTab) document.getElementById('tab-champions').textContent = t('tabChampions');
   if (guideTab) document.getElementById('tab-guide').textContent = t('tabGuide');
   if (sourcesTab) document.getElementById('tab-sources').textContent = t('tabSources');
   addEnemyButton.textContent = t('addEnemy');
@@ -1132,6 +1220,7 @@ setEnemyShown(enemyShown);
 rankings = createRankings(document.getElementById('rankings'));
 if (TABS.includes('optimize')) optimizer = createOptimizer(document.getElementById('optimize'));
 if (TABS.includes('items')) itemsTab = createItemsTab(document.getElementById('items'));
+if (TABS.includes('champions')) championsTab = createChampionsTab(document.getElementById('champions'));
 if (TABS.includes('guide') && typeof GUIDE === 'object') guideTab = createGuideTab(document.getElementById('guide'));
 if (TABS.includes('sources') && typeof GUIDE === 'object') sourcesTab = createSourcesTab(document.getElementById('sources'));
 TABS.forEach((name, i) => {

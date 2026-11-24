@@ -468,6 +468,10 @@ Zyra E
 == Champion records (missing, or base stats corrected from game files) ==
 base adperlevel taken from game files for 172 champions (Data Dragon differs): Aatrox 0 -> 5, Ahri 0 -> 3, Akali 0 -> 3.3, Akshan 0 -> 3, Alistar 0 -> 3.75, Ambessa 0 -> 3, Amumu 0 -> 3.8, Anivia 0 -> 3.2 ...
 
+== Champions with no position (Meraki doesn't list them yet) ==
+Locke
+Zaahen
+
 == CommunityDragon fallbacks ==
 (none)
 

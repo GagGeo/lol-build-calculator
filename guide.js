@@ -509,6 +509,13 @@ const GUIDE = (() => {
         {en: 'CommunityDragon', fr: 'CommunityDragon', url: 'https://www.communitydragon.org/'},
         {en: 'Game files for this patch', fr: 'Fichiers du jeu de ce patch', url: 'https://raw.communitydragon.org/{minor}/game/'},
       ]},
+    {title: {en: 'Champion roles', fr: 'Rôles des champions'},
+      text: {en: 'Riot\'s files don\'t say where a champion is played. The usual roles (Top, Jungle, Mid, Bot, Support) come from a community dataset, downloaded again for every patch.',
+        fr: 'Les fichiers de Riot n\'indiquent pas où un champion est joué. Les rôles habituels (Haut, Jungle, Milieu, Bas, Support) viennent de données communautaires, retéléchargées à chaque patch.'},
+      links: [
+        {en: 'Meraki Analytics static data', fr: 'Données statiques de Meraki Analytics', url: 'https://github.com/meraki-analytics/lolstaticdata'},
+        {en: 'Champion file', fr: 'Fichier des champions', url: 'https://cdn.merakianalytics.com/riot/lol/resources/latest/en-US/champions.json'},
+      ]},
     {title: {en: 'Hand-checked rules', fr: 'Règles vérifiées à la main'},
       text: {en: 'What the files don\'t state clearly is written by hand and checked each patch: item passives that change stats, caps, critical damage, Grievous Wounds.',
         fr: 'Ce que les fichiers n\'indiquent pas clairement est écrit à la main et vérifié à chaque patch : passifs d\'objets qui changent les stats, plafonds, dégâts critiques, Blessures graves.'},

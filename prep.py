@@ -613,6 +613,7 @@ def build_champions(dd_en, dd_fr, records):
             "id": cid,
             "name": {"en": en["name"], "fr": fr["name"]},
             "title": {"en": en["title"], "fr": fr["title"]},
+            "tags": en.get("tags", []),  # Riot's classes: Marksman, Mage, Tank...
             "resource": en.get("partype", ""),
             "base": {**base, "asratio": round(ratio, 4)},
             "adaptiveAP": adaptive_ap,
@@ -653,6 +654,19 @@ def fetch_json(url, cache_path):
 
 DD = "https://ddragon.leagueoflegends.com"
 CD = "https://raw.communitydragon.org"
+# Usual positions per champion (Riot's files have none). Community data, "latest" only: cached per patch.
+MERAKI = "https://cdn.merakianalytics.com/riot/lol/resources/latest/en-US/champions.json"
+POSITIONS = ("TOP", "JUNGLE", "MIDDLE", "BOTTOM", "SUPPORT")
+
+
+def attach_positions(champions, meraki):
+    """Sets each champion's "positions" from Meraki's file; returns the ids it doesn't list."""
+    missing = []
+    for cid, champ in champions.items():
+        champ["positions"] = [p for p in (meraki.get(cid) or {}).get("positions", []) if p in POSITIONS]
+        if not champ["positions"]:
+            missing.append(cid)
+    return missing
 
 
 def main(argv):
@@ -699,6 +713,11 @@ def main(argv):
     records = {cid: f[0] for cid, f in files.items()}
 
     champions, champ_report = build_champions(ch_en, ch_fr, records)
+    try:
+        no_position = attach_positions(champions, fetch_json(MERAKI, cache / "meraki_champions.json"))
+    except (urllib.error.URLError, ValueError) as e:  # a missing role must not block a patch update
+        no_position = attach_positions(champions, {})
+        report.append(f"Meraki positions not downloaded: {e}")
     unsupported, unparsed, spells_ok, spells_all = collections.Counter(), [], 0, 0
     possible_champ_stats = sorted(cid for cid, (rec, data, _, _) in files.items()
                                   if passive_stat_words(passive_tooltip(data, rec or {}, strings)[2]))
@@ -782,6 +801,7 @@ def main(argv):
         ("Possible survival items for the advisor (review in rules.py)",
          [f"{i} {items[i]['name']['en']}" for i in possible_survival]),
         ("Champion records (missing, or base stats corrected from game files)", champ_report),
+        ("Champions with no position (Meraki doesn't list them yet)", no_position),
         ("CommunityDragon fallbacks", report),
         (f"Changes since {previous[-1].stem}" if previous else "Changes (no previous patch)", diff),
     ]

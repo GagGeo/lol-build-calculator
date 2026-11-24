@@ -43,6 +43,7 @@
   .tabs button[aria-selected="true"], .subtabs button[aria-selected="true"] { color: var(--gold); border-color: var(--gold); font-weight: 600; }
   .rank-form { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 0 14px; }
   .rank-form input { width: 100%; }
+  #champions td { text-align: left; }
   #panels { display: grid; gap: 16px; }
   /* Only your panel: one wide panel laid out in two columns, as in the original calculator. */
   #panels.solo { grid-template-columns: minmax(0, 1fr); }
@@ -148,6 +149,7 @@
   <button type="button" role="tab" id="tab-rankings" aria-controls="rankings"></button>
   <button type="button" role="tab" id="tab-optimize" aria-controls="optimize"></button>
   <button type="button" role="tab" id="tab-items" aria-controls="items"></button>
+  <button type="button" role="tab" id="tab-champions" aria-controls="champions"></button>
   <button type="button" role="tab" id="tab-guide" aria-controls="guide"></button>
   <button type="button" role="tab" id="tab-sources" aria-controls="sources"></button>
 </nav>
@@ -159,14 +161,15 @@
   <section id="rankings" class="panel" role="tabpanel" aria-labelledby="tab-rankings" hidden></section>
   <section id="optimize" class="panel" role="tabpanel" aria-labelledby="tab-optimize" hidden></section>
   <section id="items" class="panel" role="tabpanel" aria-labelledby="tab-items" hidden></section>
+  <section id="champions" class="panel" role="tabpanel" aria-labelledby="tab-champions" hidden></section>
   <section id="guide" class="panel" role="tabpanel" aria-labelledby="tab-guide" hidden></section>
   <section id="sources" class="panel" role="tabpanel" aria-labelledby="tab-sources" hidden></section>
 </main>
 <footer data-t="disclaimer"></footer>
-<script src="data.js?v=15bded5530"></script>
-<script src="engine.js?v=401f51def6"></script>
-<script src="guide.js?v=003ada521b"></script>
-<script src="i18n.js?v=b381a38e15"></script>
-<script src="app.js?v=0ba94a822c"></script>
+<script src="data.js?v=2e57ad5861"></script>
+<script src="engine.js?v=84872a6313"></script>
+<script src="guide.js?v=aa38385767"></script>
+<script src="i18n.js?v=de87ae8495"></script>
+<script src="app.js?v=49328f9b38"></script>
 </body>
 </html>
