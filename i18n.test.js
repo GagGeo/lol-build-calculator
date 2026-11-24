@@ -31,7 +31,7 @@ test('stage 2 labels exist in both languages', () => {
 });
 test('stage 3 labels exist in both languages', () => {
   for (const k of ['goldInPocket', 'advisor', 'suggest', 'sortBy', 'sortOffense', 'sortDefense', 'perGold', 'buy', 'costCol',
-                   'damageGain', 'killStep', 'survivalGain', 'apply', 'notScored', 'stale', 'enterGold', 'nothingAffordable',
+                   'damageGain', 'killStep', 'survivalGain', 'apply', 'notScored', 'stale', 'unlimitedNote', 'nothingAffordable',
                    'partlyCounted', 'completes', 'baseline', 'notScoredIntro']) {
     assert.ok(I18N.LABELS.en[k] && I18N.LABELS.fr[k], k);
   }

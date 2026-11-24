@@ -507,7 +507,7 @@ function createAdvisor(section) {
     if (!enemyShown && !isStat) { ui.message.textContent = t('needEnemy'); return; }
     if (!result) return;
     if (result.error) {
-      ui.message.textContent = t(result.error === 'no_gold' ? 'enterGold' : result.error === 'no_enemy' ? 'needEnemy' : 'nothingAffordable');
+      ui.message.textContent = t(result.error === 'no_enemy' ? 'needEnemy' : 'nothingAffordable');
       return;
     }
     if (stale) ui.message.textContent = t('stale');
@@ -522,7 +522,8 @@ function createAdvisor(section) {
     }
     const cols = combat ? ['buy', 'costCol', 'damageGain', 'killStep', 'survivalGain', '', ''] : ['buy', 'costCol', 'stat_' + by, '', ''];
     const head = el('thead', {}, el('tr', {}, ...cols.map((k) => el('th', {scope: 'col', text: k ? t(k) : ''}))));
-    const rows = Engine.rankBuys(result.rows, by, ui.perGold.checked).map((r) => {
+    if (result.unlimited) ui.baseline.textContent += ' ' + t('unlimitedNote');
+    const rows = Engine.rankBuys(result.rows, by, ui.perGold.checked, 20, result.unlimited).map((r) => {
       const what = names(r.buys) + (r.consumed.length ? ` (${t('completes', {items: names(r.consumed)})})` : '');
       const apply = el('button', {type: 'button', text: t('apply'), 'aria-label': `${t('apply')}: ${what}`});
       apply.disabled = stale;

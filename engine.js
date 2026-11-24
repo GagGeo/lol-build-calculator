@@ -728,11 +728,13 @@ const Engine = (() => {
   // panels' current choices: offense = enemy HP your combo removes in addition; defense = your HP saved.
   // opts.by: 'offense', 'defense' or a stat key (RANKABLE_STATS): the triples are searched for it. Without an
   // enemy only stats are scored. Every row carries `gains`: each rankable stat's total after minus before.
+  // No gold given (empty, 0 or not a number): no limit, single buys only (`unlimited: true`).
+  // ponytail: singles only, as all pairs without a gold limit means ~40k combos scored; add pairs if asked
   function adviseBuys(data, you, enemy, gold, opts = {}) {
     const tripleFrom = opts.tripleFrom ?? 20;
     const by = opts.by || 'offense';
-    const g = gold === '' || gold === null || gold === undefined ? NaN : Number(gold);
-    if (!Number.isFinite(g) || g <= 0) return {rows: [], notScored: [], baseline: null, error: 'no_gold'};
+    const n = gold === '' || gold === null || gold === undefined ? NaN : Number(gold);
+    const unlimited = !Number.isFinite(n) || n <= 0, g = unlimited ? Infinity : n;
     if (!enemy && !RANKABLE_STATS.includes(by)) return {rows: [], notScored: [], baseline: null, error: 'no_enemy'};
     const rules = data.rules;
     const enemyStats = enemy && championStats(data, enemy);
@@ -794,12 +796,12 @@ const Engine = (() => {
     };
     const cheapest = Math.min(...singles.map((s) => s.cost));
     for (let i = 0; i < singles.length; i++) {
-      if (singles[i].cost + cheapest > g) continue;
+      if (unlimited || singles[i].cost + cheapest > g) continue;
       for (let j = i; j < singles.length; j++) tryAll([singles[i].buys[0], singles[j].buys[0]]);
     }
     const gainOf = (row, key) => (key in row ? row[key] : row.gains[key]);
     const best = (key) => singles.slice().sort((x, y) => gainOf(y, key) - gainOf(x, key)).slice(0, tripleFrom).map((s) => s.buys[0]);
-    const top = [...new Set(RANKABLE_STATS.includes(by) ? best(by) : [...best('offense'), ...best('defense')])];
+    const top = unlimited ? [] : [...new Set(RANKABLE_STATS.includes(by) ? best(by) : [...best('offense'), ...best('defense')])];
     for (let i = 0; i < top.length; i++) {
       for (let j = i; j < top.length; j++) {
         for (let k = j; k < top.length; k++) tryAll([top[i], top[j], top[k]]);
@@ -808,15 +810,18 @@ const Engine = (() => {
     const notScored = [...notScoredIds].filter((id) => data.items[id]).map((id) => ({id, r: chain([id])}))
       .filter((x) => x.r).map((x) => ({id: x.id, cost: x.r.cost}));
     const rows = [...byInventory.values()];
-    return {rows, notScored, baseline, error: rows.length || notScored.length ? null : 'nothing_affordable'};
+    return {rows, notScored, baseline, unlimited, error: rows.length || notScored.length ? null : 'nothing_affordable'};
   }
 
-  function rankBuys(rows, by, perGold, top = 20) {
+  // cheapestFirst (no gold given): only buys that add something, by cost first, then by value.
+  function rankBuys(rows, by, perGold, top = 20, cheapestFirst = false) {
     const isStat = !['offense', 'defense'].includes(by);
     const value = (r) => (isStat ? r.gains[by] : r[by]) * (perGold ? 100 / Math.max(r.cost, 1) : 1);
     const killRank = (r) => (isStat ? 0 : by === 'offense' ? (r.killsAt ?? Infinity) : -(r.enemyKillsAt ?? Infinity));
-    return rows.slice().sort((a, b) => value(b) - value(a) || killRank(a) - killRank(b) || a.cost - b.cost
-      || (a.buys || []).length - (b.buys || []).length).slice(0, top);
+    const byValue = (a, b) => value(b) - value(a) || killRank(a) - killRank(b);
+    return rows.filter((r) => !cheapestFirst || value(r) > 0)
+      .sort((a, b) => (cheapestFirst ? a.cost - b.cost || byValue(a, b) : byValue(a, b) || a.cost - b.cost)
+        || (a.buys || []).length - (b.buys || []).length).slice(0, top);
   }
 
   // --- Stage 4: rankings ------------------------------------------------------------------------

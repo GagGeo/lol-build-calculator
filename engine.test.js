@@ -401,7 +401,18 @@ const FOE = sel6('Foe', [null, null, null, null, null, null]);
 const advise = (gold) => Engine.adviseBuys(D6, YOU, FOE, gold);
 const comboWith = (items) => Engine.runCombo(D6, {...YOU, items, stats: Engine.championStats(D6, {...YOU, items})},
   {champ: 'Foe', stats: Engine.championStats(D6, FOE), currentHpPct: 100}, YOU.combo);
-test('no gold', () => { for (const g of [0, -5, '', 'x']) assert.equal(advise(g).error, 'no_gold'); });
+test('no gold: no limit, single buys only', () => {
+  for (const g of [0, -5, '', 'x']) {
+    const a = advise(g);
+    assert.ok(a.unlimited && a.rows.length && a.rows.every((r) => r.buys.length === 1), String(g));
+    assert.ok(a.rows.some((r) => r.cost > 3000) || a.rows.some((r) => r.buys.join() === 'bf'), String(g));
+  }
+});
+test('cheapest first: cost, then value, and buys that add nothing are left out', () => {
+  const rows = [{offense: 50, killsAt: null, cost: 900}, {offense: 10, killsAt: null, cost: 300},
+    {offense: 40, killsAt: null, cost: 300}, {offense: 0, killsAt: null, cost: 100}];
+  assert.deepEqual(Engine.rankBuys(rows, 'offense', false, 20, true).map((r) => r.offense), [40, 10, 50]);
+});
 test('nothing affordable', () => assert.equal(advise(100).error, 'nothing_affordable'));
 test('single buys scored against the baseline', () => {
   const a = advise(1300);

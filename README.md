@@ -18,7 +18,7 @@ To share it, send that link.
 
 - **Stats:** pick a champion, a level (1 to 18), runes and up to 6 items, and see the resulting stats. Builds the game wouldn't allow (two pairs of boots, two copies of the same legendary…) can't be picked. Open **Temporary buffs** to add an elixir, Baron, Ghost or dragon stacks.
 - **Damage:** click **+ Add an enemy** and pick their champion, level, runes and items. You see what your basic attacks and spells deal to them after armor and magic resist, and the result of a full combo: "kills at step 3" or "leaves 420 HP". The same is shown in the other direction. **How to beat them** reads both combos and says what to buy against the enemy (armor or magic resist, penetration, Grievous Wounds…).
-- **What to buy:** type the gold you're carrying and click **Suggest purchases**. The tool ranks what you can buy right now, including finishing an item from parts you already own, by extra damage to the enemy, by how much more of their combo you survive, or by any stat (Health, Armor, Life Steal…; no enemy needed). **Apply** puts the purchase into your items.
+- **What to buy:** type the gold you're carrying and click **Suggest purchases**. The tool ranks what you can buy right now, including finishing an item from parts you already own, by extra damage to the enemy, by how much more of their combo you survive, or by any stat (Health, Armor, Life Steal…; no enemy needed). With no gold typed, there is no gold limit: single items, cheapest first, then the best. **Apply** puts the purchase into your items.
 
 - **Rankings** (second tab): pick a stat, for example Health or Move Speed. You get the champions and builds (level, 6 items, rune page) that reach the most of it, 10 by default. You can also set a gold limit. **Open as You** or **Open as Enemy** loads a row into the calculator.
 - **Champ Optimization** (third tab): pick a champion, a level and a stat, and optionally a gold limit and the champion's stacks. You get the build (6 items and a rune page) that reaches the most of it, its cost and all its stats, plus the next best builds. Untick an item to see the stats without it; **Item details** opens it in the Items tab.
@@ -34,7 +34,7 @@ The whole page switches between English and French with the button at the top ri
 1. Under **You**, choose your champion and level. Runes and items are optional.
 2. Click **+ Add an enemy** and choose who you're fighting. You can remove it again with **Remove enemy**.
 3. Read **Damage to…** under each side. You can reorder or remove steps of the combo.
-4. To get buying advice (this needs an enemy), type your gold in **Gold in pocket**, then click **Suggest purchases** at the bottom.
+4. To get buying advice (this needs an enemy), type your gold in **Gold in pocket** (or leave it empty for no limit), then click **Suggest purchases** at the bottom.
 
 When a number can't be calculated reliably, the page says **check in game** instead of guessing.
 
@@ -88,7 +88,7 @@ Pour le partager, envoyez ce lien.
 
 - **Statistiques :** choisissez un champion, un niveau (1 à 18), des runes et jusqu'à 6 objets, et voyez les statistiques obtenues. Les builds impossibles en jeu (deux paires de bottes, deux fois le même objet légendaire…) ne peuvent pas être choisis. Ouvrez **Bonus temporaires** pour ajouter un élixir, le Baron, Fantôme ou des cumuls de dragons.
 - **Dégâts :** cliquez sur **+ Ajouter un adversaire** et choisissez son champion, son niveau, ses runes et ses objets. Vous voyez ce que vos attaques de base et vos sorts lui infligent après armure et résistance magique, et le résultat d'un combo complet : « tue à l'étape 3 » ou « laisse 420 PV ». La même chose est affichée dans l'autre sens. **Comment battre** lit les deux combos et dit quoi acheter contre l'adversaire (armure ou résistance magique, pénétration, Blessures graves…).
-- **Quoi acheter :** indiquez l'or que vous avez en poche et cliquez sur **Proposer des achats**. L'outil classe ce que vous pouvez acheter maintenant, y compris terminer un objet à partir des composants que vous possédez déjà, selon les dégâts en plus sur l'adversaire, la vie qu'il vous reste en plus après son combo, ou n'importe quelle statistique (Points de vie, Armure, Vol de vie… ; sans adversaire). **Appliquer** ajoute l'achat à vos objets.
+- **Quoi acheter :** indiquez l'or que vous avez en poche et cliquez sur **Proposer des achats**. L'outil classe ce que vous pouvez acheter maintenant, y compris terminer un objet à partir des composants que vous possédez déjà, selon les dégâts en plus sur l'adversaire, la vie qu'il vous reste en plus après son combo, ou n'importe quelle statistique (Points de vie, Armure, Vol de vie… ; sans adversaire). Sans or indiqué, il n'y a pas de limite : objets seuls, les moins chers d'abord, puis les meilleurs. **Appliquer** ajoute l'achat à vos objets.
 
 - **Classements** (second onglet) : choisissez une statistique, par exemple Points de vie ou Vitesse de déplacement. Vous obtenez les champions et les builds (niveau, 6 objets, page de runes) qui en atteignent le plus, 10 par défaut. Vous pouvez aussi fixer une limite d'or. **Ouvrir pour Vous** ou **Ouvrir pour Adversaire** charge une ligne dans le calculateur.
 - **Optimisation** (troisième onglet) : choisissez un champion, un niveau et une statistique, et si vous voulez une limite d'or et les cumuls du champion. Vous obtenez le build (6 objets et une page de runes) qui en atteint le plus, son coût et toutes ses statistiques, ainsi que les builds suivants. Décochez un objet pour voir les statistiques sans lui ; **Détails de l'objet** l'ouvre dans l'onglet Objets.
@@ -104,7 +104,7 @@ Toute la page passe de l'anglais au français avec le bouton en haut à droite.
 1. Sous **Vous**, choisissez votre champion et votre niveau. Runes et objets sont facultatifs.
 2. Cliquez sur **+ Ajouter un adversaire** et choisissez contre qui vous jouez. Vous pouvez le retirer avec **Retirer l'adversaire**.
 3. Lisez **Dégâts sur…** sous chaque côté. Vous pouvez réordonner ou retirer des étapes du combo.
-4. Pour des conseils d'achat (il faut un adversaire), indiquez votre or dans **Or en poche**, puis cliquez sur **Proposer des achats** en bas de page.
+4. Pour des conseils d'achat (il faut un adversaire), indiquez votre or dans **Or en poche** (ou laissez vide pour aucune limite), puis cliquez sur **Proposer des achats** en bas de page.
 
 Quand un chiffre ne peut pas être calculé de façon fiable, la page indique **à vérifier en jeu** au lieu de deviner.
 
