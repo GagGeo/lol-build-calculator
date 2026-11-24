@@ -58,3 +58,13 @@ test('classes: both languages, known classes and stat labels', () => {
     assert.ok(I18N.LABELS.en['tag_' + c.tag] && I18N.LABELS.fr['tag_' + c.tag], c.tag);
   }
 });
+
+test('glossary: both languages, words to link, known cards', () => {
+  const cards = GUIDE.GROUPS.flatMap((g) => g.stats.map((c) => c.key));
+  for (const g of GUIDE.GLOSSARY) {
+    both(g.term, g.key); both(g.def, g.key);
+    assert.ok(g.words.en.length && g.words.fr.length, `${g.key}: words`);
+    if (g.see) assert.ok(cards.includes(g.see), `${g.key}: see ${g.see}`);
+  }
+  assert.equal(new Set(GUIDE.GLOSSARY.map((g) => g.key)).size, GUIDE.GLOSSARY.length);
+});

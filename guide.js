@@ -605,13 +605,57 @@ const GUIDE = (() => {
         {tag: 'Mage', en: 'poked down before they can help', fr: 'harcelés avant de pouvoir aider'}]},
   ];
 
+  // Glossary tab. "words": what to link in the Stats explained texts (whole words, any case); "see": a stat card.
+  const GLOSSARY = [
+    {key: 'aoe', term: {en: 'AoE (area of effect)', fr: 'Zone (AoE)'}, words: {en: ['area damage', 'AoE'], fr: ['dégâts de zone', 'AoE']},
+      def: {en: 'An effect that hits everyone in an area instead of one target.', fr: 'Un effet qui touche tout le monde dans une zone au lieu d\'une seule cible.'}},
+    {key: 'burst', term: {en: 'Burst', fr: 'Explosion (burst)'}, words: {en: ['burst'], fr: ['explosion']},
+      def: {en: 'A lot of damage in a very short time, often a full combo, to kill before the target can react.', fr: 'Beaucoup de dégâts en très peu de temps, souvent un combo complet, pour tuer avant que la cible réagisse.'}},
+    {key: 'carry', term: {en: 'Carry', fr: 'Carry'}, words: {en: ['carry', 'carries'], fr: ['carry', 'carrys']},
+      def: {en: 'The champion expected to deal most of the team\'s damage late in the game, usually a marksman or a mage.', fr: 'Le champion censé infliger l\'essentiel des dégâts de l\'équipe en fin de partie, souvent un tireur ou un mage.'}},
+    {key: 'cc', term: {en: 'Crowd control (CC)', fr: 'Contrôle (CC)'}, words: {en: ['crowd control', 'CC'], fr: ['contrôles', 'contrôle']}, see: 'tenacity',
+      def: {en: 'Effects that limit what a champion can do: stun, root, slow, knock-up, silence, taunt…', fr: 'Les effets qui limitent ce qu\'un champion peut faire : étourdissement, immobilisation, ralentissement, projection, silence, provocation…'}},
+    {key: 'cooldown', term: {en: 'Cooldown', fr: 'Délai de récupération'}, words: {en: ['cooldown', 'cooldowns'], fr: ['délai de récupération']}, see: 'ah',
+      def: {en: 'The time before an ability can be cast again.', fr: 'Le temps avant de pouvoir relancer un sort.'}},
+    {key: 'cs', term: {en: 'CS (creep score) / last hit', fr: 'CS (sbires tués) / dernier coup'}, words: {en: ['last hit'], fr: ['dernier coup']},
+      def: {en: 'You only get a minion\'s gold if you land the killing blow. Farming well is the main source of gold.', fr: 'Vous ne gagnez l\'or d\'un sbire que si vous portez le coup fatal. Bien farmer est la première source d\'or.'}},
+    {key: 'dive', term: {en: 'Dive', fr: 'Plongeon (dive)'}, words: {en: ['dive'], fr: ['plongeon']},
+      def: {en: 'Jumping onto enemies behind their front line or under their tower to reach a fragile target.', fr: 'Sauter sur les ennemis derrière leur ligne de front ou sous leur tour pour atteindre une cible fragile.'}},
+    {key: 'execute', term: {en: 'Execute', fr: 'Exécution'}, words: {en: ['execute', 'executes'], fr: ['exécute', 'exécution']},
+      def: {en: 'Damage that grows with the target\'s missing health, or kills outright below a threshold.', fr: 'Des dégâts qui grandissent avec les PV manquants de la cible, ou qui tuent net sous un seuil.'}},
+    {key: 'kite', term: {en: 'Kite', fr: 'Kiter'}, words: {en: ['kite', 'kited'], fr: ['tenir à distance']}, see: 'range',
+      def: {en: 'Attacking while walking away so a melee enemy can never reach you.', fr: 'Attaquer en reculant pour qu\'un ennemi de mêlée ne vous atteigne jamais.'}},
+    {key: 'onhit', term: {en: 'On-hit', fr: 'À l\'impact (on-hit)'}, words: {en: ['on-hit'], fr: ['à l\'impact']}, see: 'as',
+      def: {en: 'An effect that triggers each time a basic attack lands, so attack speed multiplies it.', fr: 'Un effet qui se déclenche à chaque attaque de base qui touche : la vitesse d\'attaque le multiplie.'}},
+    {key: 'peel', term: {en: 'Peel', fr: 'Peel (protéger)'}, words: {en: ['peel'], fr: ['protègent']},
+      def: {en: 'Protecting an ally by pushing, slowing or stopping the enemies attacking them.', fr: 'Protéger un allié en repoussant, ralentissant ou arrêtant les ennemis qui l\'attaquent.'}},
+    {key: 'poke', term: {en: 'Poke', fr: 'Harcèlement (poke)'}, words: {en: ['poke', 'poked'], fr: ['harcèlement', 'harcelés']},
+      def: {en: 'Chipping at enemies from long range before a fight, so they start it with less health.', fr: 'Grignoter les ennemis de loin avant un combat pour qu\'ils l\'engagent avec moins de PV.'}},
+    {key: 'ratio', term: {en: 'Ratio (scaling)', fr: 'Ratio'}, words: {en: ['ratio'], fr: ['ratio']}, see: 'ap',
+      def: {en: 'The share of a stat an ability adds to its damage: a 60% AP ratio adds 60 damage per 100 AP. The Champions tab shows them.', fr: 'La part d\'une stat qu\'un sort ajoute à ses dégâts : un ratio de 60 % d\'AP ajoute 60 dégâts pour 100 d\'AP. L\'onglet Champions les montre.'}},
+    {key: 'skillshot', term: {en: 'Skillshot', fr: 'Skillshot'}, words: {en: ['skillshot'], fr: ['skillshot']},
+      def: {en: 'An ability aimed at a place rather than a target: it can miss.', fr: 'Un sort visé vers un endroit plutôt qu\'une cible : il peut rater.'}},
+    {key: 'snowball', term: {en: 'Snowball', fr: 'Effet boule de neige'}, words: {en: ['snowball'], fr: ['boule de neige']},
+      def: {en: 'Turning an early lead (kills, gold) into a bigger and bigger one.', fr: 'Transformer une avance du début (éliminations, or) en une avance de plus en plus grande.'}},
+    {key: 'split', term: {en: 'Split push', fr: 'Split push'}, words: {en: ['split push'], fr: ['split push']},
+      def: {en: 'Pushing a side lane alone to pull enemies away from the rest of the map.', fr: 'Pousser seul une voie latérale pour attirer des ennemis loin du reste de la carte.'}},
+    {key: 'stack', term: {en: 'Stacks', fr: 'Cumuls'}, words: {en: ['stacks', 'stack'], fr: ['cumuls']},
+      def: {en: 'Counters that grow as you do something (hit, kill, wait) and power up an item, rune or ability.', fr: 'Des compteurs qui grandissent quand vous agissez (frapper, tuer, attendre) et renforcent un objet, une rune ou un sort.'}},
+    {key: 'trade', term: {en: 'Trade', fr: 'Échange (trade)'}, words: {en: ['trade', 'trades'], fr: ['échange', 'échanges']},
+      def: {en: 'A short exchange of damage in lane. You win it if they lose more health than you.', fr: 'Un court échange de dégâts en voie. Vous le gagnez si l\'adversaire perd plus de PV que vous.'}},
+  ];
+
+  // Beginner build starters (Engine.beginnerBuild): lane = Doran's items ranked by the class profile;
+  // jungle = a pet (tanks take Mosstomper); support = World Atlas.
+  const STARTERS = {lane: ['1054', '1055', '1056', '1086', '1120'], jungle: {damage: '1101', tank: '1103'}, support: '3865'};
+
   // Items tab: counters for what an item's description mentions outside its stats.
   const ITEM_COUNTERS = {
     shield: {en: 'Its shield shrinks when you damage the holder:', fr: 'Son bouclier rétrécit quand vous blessez son porteur :', items: ['6695']},
     heal: {en: 'Its healing is cut by Grievous Wounds:', fr: 'Ses soins sont réduits par les Blessures graves :', items: 'gw'},
   };
 
-  return {WIKI, EXAMPLES, GROUPS, SOURCES, ITEM_COUNTERS, CLASSES};
+  return {WIKI, EXAMPLES, GROUPS, SOURCES, ITEM_COUNTERS, CLASSES, STARTERS, GLOSSARY};
 })();
 
 if (typeof module === 'object') module.exports = GUIDE;

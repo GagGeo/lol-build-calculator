@@ -1060,7 +1060,7 @@ const Engine = (() => {
   // Items that fit a class (guide.js CLASSES keyStats = {stat: weight}): each key stat scores weight x the item's
   // amount over the most any item of its kind gives (capped at 1); a passive that changes a key stat (Rabadon's)
   // adds half its weight. Best legendaries first, plus the best tier-2 boots.
-  function classItems(data, keyStats, top = 6) {
+  function classItems(data, keyStats, top = 6, starters = []) {
     const passives = data.rules.itemStatPassives || {};
     const rank = (ids) => {
       const most = {};
@@ -1072,7 +1072,79 @@ const Engine = (() => {
         .sort((a, b) => b.score - a.score || data.items[a.id].gold.total - data.items[b.id].gold.total).map((x) => x.id);
     };
     const pick = (test) => Object.keys(data.items).filter((id) => test(data.items[id]) && !data.items[id].requiredChampion);
-    return {items: rank(pick((i) => i.tier === 5 && !i.boots)).slice(0, top), boots: rank(pick((i) => i.boots && i.tier === 4))[0] || null};
+    return {items: rank(pick((i) => i.tier === 5 && !i.boots)).slice(0, top), boots: rank(pick((i) => i.boots && i.tier === 4))[0] || null,
+      starter: rank(starters.filter((id) => data.items[id]))[0] || null};
+  }
+
+  // A simple first build for a champion: the item profile of its first class (guide.js CLASSES) that values
+  // what its abilities scale with (AP Fighters and Assassins get Mage items, AD supports like Pyke their other
+  // class); tanks and marksmen keep theirs (marksmen build for basic attacks whatever their abilities say),
+  // a starter for its usual role (starters = guide.js STARTERS), boots, then three core items.
+  function beginnerBuild(data, champId, classes, starters) {
+    const champ = data.champions[champId];
+    const best = (kitScaling(data, champId).stats.find((x) => x.stat === 'ad' || x.stat === 'ap') || {}).stat;
+    const profile = (tag) => classes.find((c) => c.tag === tag);
+    const main = profile(champ.tags[0]) || profile('Fighter');
+    const keep = !best || ['Tank', 'Marksman'].includes(main.tag) || (main.tag === 'Support' && best !== 'ad');
+    const own = keep ? main
+      : champ.tags.map(profile).find((c) => c && c.keyStats[best]) || profile(best === 'ap' ? 'Mage' : 'Fighter');
+    const role = (champ.positions || [])[0];
+    const pick = classItems(data, own.keyStats, 3, starters.lane);
+    const starter = role === 'JUNGLE' ? starters.jungle[main.tag === 'Tank' ? 'tank' : 'damage']
+      : role === 'SUPPORT' ? starters.support : pick.starter;
+    return {profile: own.tag, starter: data.items[starter] ? starter : null, boots: pick.boots, core: pick.items};
+  }
+
+  // Each ability at `level` (no items or runes) against a full 3000-health target with no resists: its damage,
+  // and what it scales with: the extra damage from 100 more of each stat, divided by 100 (0.6 = 60% of AP).
+  function spellScaling(data, champId, level) {
+    const target = {stats: {base: {hp: 3000}, bonus: {hp: 0}, total: {hp: 3000, armor: 0, mr: 0}}, currentHp: 3000};
+    const side = (add) => {
+      const d = {...data, rules: {...data.rules, buffs: [{id: 'probe', add}]}};
+      const sel = {champ: champId, level, items: [], runes: null, stacked: false, stacks: 0, buffs: {probe: 1}};
+      return [d, {...sel, stats: championStats(d, sel)}];
+    };
+    const [d0, s0] = side({});
+    const probes = ['ad', 'ap', 'hp', 'armor', 'mr'].map((k) => [k, side({[k]: 100})]);
+    return data.champions[champId].spells.map((spell) => {
+      const r = spellDamage(d0, s0, target, spell.key);
+      const ok = r.learned && !r.noDamage && !r.unsupported.length;
+      const ratios = ok ? probes.map(([k, [d, s]]) => ({stat: k, ratio: (spellDamage(d, s, target, spell.key).damage - r.damage) / 100}))
+        .filter((x) => x.ratio >= 0.005).sort((a, b) => b.ratio - a.ratio) : [];
+      return {key: spell.key, name: spell.name, learned: r.learned, rank: r.rank, noDamage: r.noDamage,
+        unreadable: r.unsupported.length > 0, damage: ok ? r.damage : 0, type: r.type, perHit: r.perHit, ratios};
+    });
+  }
+
+  // Who wins a full trade at each level (both champions at that level, with their current items and runes):
+  // the side whose combo leaves the other with the smaller share of health. 'you', 'them' or 'even'.
+  function matchupByLevel(data, you, enemy) {
+    const left = (a, b) => {
+      const as = championStats(data, a), bs = championStats(data, b);
+      const c = runCombo(data, {...a, stats: as}, {champ: b.champ, stats: bs, currentHpPct: 100, items: b.items}, a.combo || defaultCombo(data, a.champ));
+      return c.killsAt ? 0 : c.hpLeft / (bs.total.hp || 1);
+    };
+    return Array.from({length: 18}, (_, i) => {
+      const y = {...you, level: i + 1}, e = {...enemy, level: i + 1};
+      const them = left(y, e), me = left(e, y);
+      return Math.abs(them - me) < 0.02 ? 'even' : them < me ? 'you' : 'them';
+    });
+  }
+
+  // The order to buy an item from scratch: each part's own recipe first (most expensive part first), then combine.
+  function buildPath(data, id) {
+    const steps = [];
+    let total = 0;
+    const walk = (x) => {
+      const item = data.items[x];
+      const parts = (item.from || []).filter((c) => data.items[c]).sort((a, b) => data.items[b].gold.total - data.items[a].gold.total);
+      parts.forEach(walk);
+      const cost = parts.length ? item.gold.base : item.gold.total;
+      total += cost;
+      steps.push({id: x, cost, total, combine: parts.length > 0});
+    };
+    walk(id);
+    return steps;
   }
 
   // An item's stats in gold (at those prices) over its cost. Stats without a price are listed in `unpriced`;
@@ -1089,7 +1161,7 @@ const Engine = (() => {
 
   return {RANKABLE_STATS, bestBuilds, bestRunePage, rankStat, optimizeChampion, statBreakdown, statGoldPrices, goldEfficiency, adviseBuys, rankBuys, purchase, growth, capMoveSpeed, clampLevel, championStats, ultRank, validateBuild, allowedItems, pruneBuild,
           validateRunePage, normalizeRunePage, buildCost, goldWarning, evalCalc, skillRanks,
-          mitigate, autoAttack, spellDamage, runCombo, counterAdvice, kitScaling, classItems, DEFAULT_COMBO, defaultCombo, clampPct, spellHeal};
+          mitigate, autoAttack, spellDamage, runCombo, counterAdvice, kitScaling, classItems, beginnerBuild, spellScaling, matchupByLevel, buildPath, DEFAULT_COMBO, defaultCombo, clampPct, spellHeal};
 })();
 
 if (typeof module === 'object') module.exports = Engine;

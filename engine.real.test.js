@@ -299,3 +299,42 @@ test('class items: a few picks any player would expect', () => {
   // Every class has champions in the data.
   for (const c of GUIDE.CLASSES) assert.ok(Object.values(D.champions).some((ch) => ch.tags.includes(c.tag)), c.tag);
 });
+
+test('build path: Infinity Edge from scratch adds up to its price', () => {
+  const id = Object.keys(D.items).find((x) => D.items[x].name.en === 'Infinity Edge');
+  const steps = Engine.buildPath(D, id);
+  assert.equal(steps.at(-1).id, id);
+  assert.ok(steps.at(-1).combine);
+  assert.equal(steps.at(-1).total, D.items[id].gold.total);
+  assert.equal(steps.reduce((s, x) => s + x.cost, 0), D.items[id].gold.total);
+});
+
+test('beginner build: starter, boots and three core items that exist', () => {
+  const GUIDE = require('./guide.js');
+  for (const s of [...GUIDE.STARTERS.lane, ...Object.values(GUIDE.STARTERS.jungle), GUIDE.STARTERS.support]) assert.ok(D.items[s], s);
+  for (const id of Object.keys(D.champions)) {
+    const b = Engine.beginnerBuild(D, id, GUIDE.CLASSES, GUIDE.STARTERS);
+    assert.ok(b.starter && b.boots && b.core.length === 3, id);
+  }
+  const b = (id) => Engine.beginnerBuild(D, id, GUIDE.CLASSES, GUIDE.STARTERS);
+  assert.equal(D.items[b('Annie').boots].name.en, "Sorcerer's Shoes");
+  assert.equal(D.items[b('Thresh').starter].name.en, 'World Atlas');
+  assert.equal(b('Jinx').profile, 'Marksman');
+});
+
+test('spell scaling: Annie Q scales with AP, damage grows with level', () => {
+  const q = (lvl) => Engine.spellScaling(D, 'Annie', lvl).find((s) => s.key === 'Q');
+  assert.equal(q(9).ratios[0].stat, 'ap');
+  assert.ok(q(9).ratios[0].ratio > 0.5 && q(9).ratios[0].ratio < 1.2);
+  assert.ok(q(18).damage > q(1).damage);
+  assert.ok(!Engine.spellScaling(D, 'Annie', 1).find((s) => s.key === 'R').learned);
+});
+
+test('matchup by level: 18 verdicts; a full build beats no items', () => {
+  const sel = (champ, items) => ({champ, level: 1, items, runes: null, stacked: false, stacks: 0, combo: Engine.defaultCombo(D, champ)});
+  const rabadon = Object.keys(D.items).filter((x) => /^(Rabadon|Shadowflame|Void Staff|Sorcerer)/.test(D.items[x].name.en));
+  const r = Engine.matchupByLevel(D, sel('Annie', rabadon), sel('Annie', []));
+  assert.equal(r.length, 18);
+  assert.ok(r.every((w) => ['you', 'them', 'even'].includes(w)));
+  assert.equal(r[17], 'you');
+});

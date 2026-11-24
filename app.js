@@ -825,6 +825,11 @@ function createItemsTab(section) {
         + (e.unpriced.length ? ' ' + t('itemUnpriced', {stats: e.unpriced.map((k) => t('stat_' + k)).join(', ')}) : '')));
     }
     if (item.from && item.from.length) parts.push(el('p', {}, t('itemFrom') + ' ', ...links(item.from)));
+    if (item.from && item.from.length) { // the order to buy it from scratch, with the running total
+      parts.push(el('h4', {text: t('itemBuildPath')}), el('ol', {}, ...Engine.buildPath(DATA, selected).map((st) => el('li', {},
+        st.combine ? t('buildCombine', {item: nm(DATA.items[st.id].name)}) : link(st.id),
+        ' ' + t('buildCost', {cost: fmt(st.cost, 0), total: fmt(st.total, 0)})))));
+    }
     const into = (item.into || []).filter((id) => DATA.items[id]);
     if (into.length) parts.push(el('p', {}, t('itemInto') + ' ', ...links(into)));
     if (item.requiredChampion && DATA.champions[item.requiredChampion]) {
@@ -933,6 +938,47 @@ function createChampionsTab(section) {
   const scalesText = (id) => (scaleOf(id).stats.length ? top(id).map((x) => t('stat_' + x.stat)).join(', ') : '—');
   const link = (id) => linkButton(nm(DATA.champions[id].name), () => open(id));
 
+  // A simple first build (Engine.beginnerBuild), with a button that loads it into your panel.
+  function beginnerBuild(id) {
+    const b = Engine.beginnerBuild(DATA, id, GUIDE.CLASSES, GUIDE.STARTERS);
+    const join = (ids) => ids.flatMap((x, i) => [...(i ? [' → '] : []), itemButton(x)]);
+    const load = el('button', {type: 'button', text: t('champBuildLoad')});
+    load.addEventListener('click', () => {
+      panels[0].setChamp(id);
+      panels[0].setItems([b.boots, ...b.core, null, null, null, null, null, null].slice(0, 6));
+      showTab('calculator');
+      panels[0].section.scrollIntoView();
+    });
+    return [el('h4', {text: t('champBuild')}),
+      el('ul', {}, ...(b.starter ? [el('li', {}, t('champBuildStart') + ' ', itemButton(b.starter))] : []),
+        ...(b.boots ? [el('li', {}, t('champBuildBoots') + ' ', itemButton(b.boots))] : []),
+        el('li', {}, t('champBuildCore') + ' ', ...join(b.core))),
+      el('p', {class: 'note', text: t('champBuildNote', {profile: t('tag_' + b.profile)})}), el('div', {class: 'row combo-add'}, load)];
+  }
+  // Each ability's damage at a level picked with a slider, and what it scales with (Engine.spellScaling).
+  let abilityLevel = 9;
+  function abilities(id) {
+    const list = el('ul');
+    const range = el('input', {type: 'range', id: 'champ-ability-level', min: 1, max: 18, step: 1, value: abilityLevel});
+    const out = el('output', {for: 'champ-ability-level'});
+    const update = () => {
+      out.textContent = String(abilityLevel);
+      list.replaceChildren(...Engine.spellScaling(DATA, id, abilityLevel).map((sp) => {
+        const head = `${sp.key === 'P' ? t('passive') : sp.key} · ${nm(sp.name)}: `;
+        const text = !sp.learned ? t('notLearned') : sp.unreadable ? t('abilityUnreadable') : sp.noDamage || !sp.damage ? t('abilityNoDamage')
+          : t('abilityDamage', {damage: fmt(sp.damage, 0), type: t('type_' + sp.type)}) + (sp.perHit ? ' ' + t('perHit') : '')
+            + (sp.key !== 'P' ? ` (${t('rank').toLowerCase()} ${sp.rank})` : '')
+            + (sp.ratios.length ? '. ' + t('abilityScales', {list: sp.ratios.map((r) => `${fmt(100 * r.ratio, 0)}% ${t('stat_' + r.stat)}`).join(', ')}) : '');
+        return el('li', {}, el('strong', {text: head}), text);
+      }));
+    };
+    range.addEventListener('input', () => { abilityLevel = Number(range.value); update(); });
+    update();
+    return [el('h4', {text: t('champAbilities')}),
+      el('div', {class: 'guide-row'}, el('label', {for: 'champ-ability-level', text: t('level')}), range, out),
+      list, el('p', {class: 'note', text: t('abilityNote')})];
+  }
+
   function renderCard() {
     ui.card.hidden = !selected;
     if (!selected) return;
@@ -947,6 +993,7 @@ function createChampionsTab(section) {
     const names = s.excluded.map((k) => (k === 'P' ? t('passive') : k));
     if (s.excluded.length && s.stats.length) parts.push(el('p', {class: 'notice', text: t('champExcluded', {spells: names.join(', ')})}));
     parts.push(el('p', {class: 'note', text: t('champScalesNote')}));
+    if (typeof GUIDE === 'object') parts.push(...beginnerBuild(selected), ...abilities(selected));
     const openAs = (idx, who) => {
       const b = el('button', {type: 'button', text: t('openAs', {who: t(who)})});
       b.addEventListener('click', () => {
@@ -1027,16 +1074,16 @@ function createClassesTab(section) {
     const itemLine = (id) => el('li', {}, itemButton(id), ' ' + Object.entries(DATA.items[id].stats).filter(([k]) => c.keyStats[k])
       .map(([k, v]) => `+${fmt(v)}${k === 'as' ? '%' : ''} ${t('stat_' + k)}`).join(', ')); // other % stats say so in their name
     const all = shownAll.has(c.tag);
-    const toggle = linkButton(all ? t('guideHideItems') : t('classAllChamps', {n: champs.length}), () => {
+    const toggle = linkButton(all ? t('classHideChamps') : t('classAllChamps', {n: champs.length}), () => {
       if (all) shownAll.delete(c.tag); else shownAll.add(c.tag);
       render();
     });
     toggle.setAttribute('aria-expanded', String(all));
     return el('article', {class: 'item-card'},
-      el('h3', {text: t('tag_' + c.tag)}), el('p', {text: pick(c.what)}),
+      el('h3', {text: t('tag_' + c.tag)}), el('p', {}, ...glossaryNodes(pick(c.what))),
       ...(played ? [el('p', {text: `${t('classPlayed')}: ${played}`})] : []),
-      label(t('classPros')), el('ul', {}, ...c.pros.map((x) => el('li', {text: pick(x)}))),
-      label(t('classCons')), el('ul', {}, ...c.cons.map((x) => el('li', {text: pick(x)}))),
+      label(t('classPros')), el('ul', {}, ...c.pros.map((x) => el('li', {}, ...glossaryNodes(pick(x))))),
+      label(t('classCons')), el('ul', {}, ...c.cons.map((x) => el('li', {}, ...glossaryNodes(pick(x))))),
       label(t('classStrong')), vs(c.strong), label(t('classWeak')), vs(c.weak),
       label(t('classKeyStats')), el('p', {}, ...Object.keys(c.keyStats).flatMap((k, i) => [...(i ? [', '] : []),
         CARDS[k] ? linkButton(cardTitle(k), () => guideTab && guideTab.open(k)) : t('stat_' + k)])),
@@ -1083,6 +1130,27 @@ const linkButton = (text, action) => {
   return b;
 };
 const itemButton = (id) => linkButton(nm(DATA.items[id].name), () => itemsTab && itemsTab.open(id));
+// Glossary words in a text become links to their definition (Glossary tab). Whole words only, any case.
+const glossaryWords = {};
+function glossaryNodes(text) {
+  if (typeof GUIDE !== 'object' || !GUIDE.GLOSSARY) return [text];
+  if (!glossaryWords[lang]) {
+    const map = new Map();
+    for (const g of GUIDE.GLOSSARY) for (const w of g.words[lang] || []) map.set(w.toLowerCase(), g.key);
+    const alts = [...map.keys()].sort((a, b) => b.length - a.length).map((w) => w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
+    glossaryWords[lang] = {map, re: new RegExp(`(?<![\\p{L}\\p{N}])(${alts.join('|')})(?![\\p{L}\\p{N}])`, 'giu')};
+  }
+  const {map, re} = glossaryWords[lang];
+  const out = [];
+  let last = 0;
+  for (const m of text.matchAll(re)) {
+    out.push(text.slice(last, m.index), linkButton(m[0], () => glossaryTab && glossaryTab.open(map.get(m[0].toLowerCase()))));
+    last = m.index + m[0].length;
+  }
+  out.push(text.slice(last));
+  return out.filter((x) => x !== '');
+}
+
 function counterNodes(c, skip) { // skip: the item being shown, not listed as its own counter
   const join = (xs) => xs.flatMap((x, i) => (i ? [', ', x] : [x]));
   const items = counterItems(c).filter((id) => id !== skip).map(itemButton);
@@ -1161,8 +1229,8 @@ function createGuideTab(section) {
       return b;
     });
     const cards = GUIDE.GROUPS[current].stats.map((card) => el('article', {class: 'item-card', id: 'guide-' + card.key},
-      el('h4', {text: card.title ? pick(card.title) : t('stat_' + card.key)}), el('p', {text: pick(card.what)}),
-      el('p', {class: 'guide-label', text: t('guideWith')}), el('ul', {}, ...card.with.map((w) => el('li', {text: pick(w)}))),
+      el('h4', {text: card.title ? pick(card.title) : t('stat_' + card.key)}), el('p', {}, ...glossaryNodes(pick(card.what))),
+      el('p', {class: 'guide-label', text: t('guideWith')}), el('ul', {}, ...card.with.map((w) => el('li', {}, ...glossaryNodes(pick(w))))),
       ...(card.counter ? [el('p', {class: 'guide-label', text: t('guideCounter')}),
         el('ul', {}, ...card.counter.map((c) => el('li', {}, ...counterNodes(c))))] : []),
       ...(card.example ? [example(card)] : []), ...itemList(card),
@@ -1183,6 +1251,25 @@ function createGuideTab(section) {
 }
 let guideTab = null;
 
+// "Glossary" tab: the words guides use without explaining them (guide.js GLOSSARY), in alphabetical order.
+function createGlossaryTab(section) {
+  function render() {
+    const entries = GUIDE.GLOSSARY.slice().sort((a, b) => pick(a.term).localeCompare(pick(b.term), lang));
+    section.replaceChildren(el('h2', {text: t('tabGlossary')}), el('p', {text: t('glossaryIntro')}),
+      el('div', {class: 'guide-cards'}, ...entries.map((g) => el('article', {class: 'item-card', id: 'glossary-' + g.key, tabindex: -1},
+        el('h4', {text: pick(g.term)}), el('p', {text: pick(g.def)}),
+        ...(g.see && CARDS[g.see] ? [el('p', {class: 'note'}, t('see') + ' ', linkButton(cardTitle(g.see), () => guideTab && guideTab.open(g.see)))] : [])))));
+  }
+  function open(key) {
+    showTab('glossary');
+    const card = section.querySelector('#glossary-' + key);
+    if (card) { card.scrollIntoView({behavior: 'smooth', block: 'start'}); card.focus({preventScroll: true}); }
+  }
+  render();
+  return {setLang: render, open};
+}
+let glossaryTab = null;
+
 // "Sources" tab: where the data and formulas come from, with links.
 function createSourcesTab(section) {
   const minor = DATA.patch.split('.').slice(0, 2).join('.');
@@ -1200,7 +1287,7 @@ let sourcesTab = null;
 
 // Tabs: the calculator (panels + advisor), the rankings and the champion optimizer. The choice is remembered.
 // Only tabs present in the page: a cached older index.html next to a newer app.js must not break the page.
-const TABS = ['calculator', 'rankings', 'optimize', 'items', 'champions', 'classes', 'guide', 'sources'].filter((id) => document.getElementById(id) && document.getElementById('tab-' + id));
+const TABS = ['calculator', 'rankings', 'optimize', 'items', 'champions', 'classes', 'guide', 'glossary', 'sources'].filter((id) => document.getElementById(id) && document.getElementById('tab-' + id));
 function showTab(name) {
   for (const [tab, panel] of TABS.map((x) => [x, x])) {
     const selected = tab === name;
@@ -1236,7 +1323,12 @@ function counterBox(you, enemy) {
     }
     return el('li', {}, ...parts);
   });
+  // Who wins a full trade at each level (both at that level, current items and runes), as level ranges.
+  const byLevel = Engine.matchupByLevel(DATA, you, enemy), ranges = [];
+  byLevel.forEach((w, i) => { const r = ranges.at(-1); if (r && r.w === w) r.b = i + 1; else ranges.push({w, a: i + 1, b: i + 1}); });
+  const verdict = ranges.map((r) => t('matchup_' + r.w, {levels: r.a === r.b ? t('levelOne', {a: r.a}) : t('levelRange', r)})).join('; ');
   return el('div', {class: 'counters'}, el('h3', {text: t('counterTitle', {champ: nm(DATA.champions[enemy.champ].name)})}),
+    el('p', {class: 'summary', text: t('matchupVerdict', {verdict})}),
     el('ul', {}, ...lines), el('p', {class: 'note', text: t('counterNote')}));
 }
 
@@ -1263,6 +1355,7 @@ function renderPage() {
   if (championsTab) championsTab.setLang();
   if (classesTab) classesTab.setLang();
   if (guideTab) guideTab.setLang();
+  if (glossaryTab) glossaryTab.setLang();
   if (sourcesTab) sourcesTab.setLang();
   document.getElementById('tab-calculator').textContent = t('tabCalculator');
   document.getElementById('tab-rankings').textContent = t('tabRankings');
@@ -1271,6 +1364,7 @@ function renderPage() {
   if (championsTab) document.getElementById('tab-champions').textContent = t('tabChampions');
   if (classesTab) document.getElementById('tab-classes').textContent = t('tabClasses');
   if (guideTab) document.getElementById('tab-guide').textContent = t('tabGuide');
+  if (glossaryTab) document.getElementById('tab-glossary').textContent = t('tabGlossary');
   if (sourcesTab) document.getElementById('tab-sources').textContent = t('tabSources');
   addEnemyButton.textContent = t('addEnemy');
 }
@@ -1297,6 +1391,7 @@ if (TABS.includes('items')) itemsTab = createItemsTab(document.getElementById('i
 if (TABS.includes('champions')) championsTab = createChampionsTab(document.getElementById('champions'));
 if (TABS.includes('classes') && typeof GUIDE === 'object') classesTab = createClassesTab(document.getElementById('classes'));
 if (TABS.includes('guide') && typeof GUIDE === 'object') guideTab = createGuideTab(document.getElementById('guide'));
+if (TABS.includes('glossary') && typeof GUIDE === 'object') glossaryTab = createGlossaryTab(document.getElementById('glossary'));
 if (TABS.includes('sources') && typeof GUIDE === 'object') sourcesTab = createSourcesTab(document.getElementById('sources'));
 TABS.forEach((name, i) => {
   const tab = document.getElementById('tab-' + name);
