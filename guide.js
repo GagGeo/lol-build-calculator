@@ -678,6 +678,36 @@ const GUIDE = (() => {
       fr: 'Des outils qui contournent les règles : bottes gratuites, potions, accélération et effets inhabituels.'},
   };
 
+  // Start here tab: the five roles (Meraki position codes) and the usual summoner spell pair for each.
+  const ROLES = [
+    {key: 'TOP', spells: ['SummonerFlash', 'SummonerTeleport'],
+      what: {en: 'Fights alone against one enemy in the top lane for most of the early game. Usually a fighter or tank who becomes the team\'s front line.',
+        fr: 'Se bat seul contre un ennemi dans la voie du haut pendant presque tout le début de partie. Souvent un combattant ou un tank qui devient la ligne de front.'},
+      why: {en: 'Teleport brings you back to lane after a trip to base, or to a fight on the other side of the map.', fr: 'Téléportation vous ramène en voie après un retour à la base, ou vers un combat à l\'autre bout de la carte.'}},
+    {key: 'JUNGLE', spells: ['SummonerFlash', 'SummonerSmite'],
+      what: {en: 'Kills the neutral monsters between the lanes, takes the dragons and Baron, and surprises enemy lanes to help allies.',
+        fr: 'Tue les monstres neutres entre les voies, prend les dragons et le Baron, et surprend les voies ennemies pour aider ses alliés.'},
+      why: {en: 'Smite is required to clear monsters fast and to secure dragons and Baron.', fr: 'Châtiment est indispensable pour tuer vite les monstres et sécuriser dragons et Baron.'}},
+    {key: 'MIDDLE', spells: ['SummonerFlash', 'SummonerDot'],
+      what: {en: 'Holds the short middle lane, usually with a mage or assassin, and moves to the sides of the map to help.',
+        fr: 'Tient la courte voie du milieu, souvent avec un mage ou un assassin, et se déplace sur les côtés pour aider.'},
+      why: {en: 'Ignite finishes enemies who would escape with little health, and cuts their healing.', fr: 'Embrasement achève les ennemis qui fuiraient avec peu de PV, et réduit leurs soins.'}},
+    {key: 'BOTTOM', spells: ['SummonerFlash', 'SummonerHeal'],
+      what: {en: 'The bottom lane carry, usually a marksman, playing next to a support. Weak early, the main source of damage late.',
+        fr: 'Le carry de la voie du bas, souvent un tireur, joué à côté d\'un support. Faible au début, principale source de dégâts à la fin.'},
+      why: {en: 'Heal saves you and your support in a fight, and speeds you both up to escape.', fr: 'Soins vous sauve, vous et votre support, en combat, et vous accélère tous les deux pour fuir.'}},
+    {key: 'SUPPORT', spells: ['SummonerFlash', 'SummonerExhaust'],
+      what: {en: 'Protects the bottom lane carry, places vision on the map, and starts or stops fights. Needs few items.',
+        fr: 'Protège le carry de la voie du bas, pose la vision sur la carte, et lance ou arrête les combats. A besoin de peu d\'objets.'},
+      why: {en: 'Exhaust weakens the enemy who jumps on your carry; aggressive supports often take Ignite instead.', fr: 'Fatigue affaiblit l\'ennemi qui saute sur votre carry ; les supports agressifs prennent souvent Embrasement.'}},
+  ];
+  const START = [
+    {en: 'Pick a role below. Each one is played differently; try one until it feels natural.', fr: 'Choisissez un rôle ci-dessous. Chacun se joue différemment ; gardez-en un jusqu\'à ce qu\'il devienne naturel.'},
+    {en: 'Pick one of its easiest champions. Fewer abilities to master means more attention left for the game.', fr: 'Choisissez un de ses champions les plus faciles. Moins de sorts à maîtriser, c\'est plus d\'attention pour la partie.'},
+    {en: 'Open its card: it has a build, a rune page and summoner spells to start with, and what each ability does.', fr: 'Ouvrez sa fiche : elle donne un build, une page de runes et des sorts d\'invocateur pour commencer, et ce que fait chaque sort.'},
+    {en: 'In game, kill minions with the last hit for gold, and buy the next item each time you go back to base.', fr: 'En partie, portez le dernier coup aux sbires pour l\'or, et achetez l\'objet suivant à chaque retour à la base.'},
+  ];
+
   // Beginner build starters (Engine.beginnerBuild): lane = Doran's items ranked by the class profile;
   // jungle = a pet (tanks take Mosstomper); support = World Atlas.
   const STARTERS = {lane: ['1054', '1055', '1056', '1086', '1120'], jungle: {damage: '1101', tank: '1103'}, support: '3865'};
@@ -688,7 +718,7 @@ const GUIDE = (() => {
     heal: {en: 'Its healing is cut by Grievous Wounds:', fr: 'Ses soins sont réduits par les Blessures graves :', items: 'gw'},
   };
 
-  return {WIKI, EXAMPLES, GROUPS, SOURCES, ITEM_COUNTERS, CLASSES, STARTERS, GLOSSARY, TREES};
+  return {WIKI, EXAMPLES, GROUPS, SOURCES, ITEM_COUNTERS, CLASSES, STARTERS, GLOSSARY, TREES, ROLES, START};
 })();
 
 if (typeof module === 'object') module.exports = GUIDE;

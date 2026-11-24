@@ -517,14 +517,20 @@ def build_spells(dd_en, dd_fr, bin_data, record, strings):
         passive["flags"].append("no_tooltip")
     if not entry:
         passive["flags"] = [f for f in passive["flags"] if f != "no_cdragon_spell"] + ["no_cdragon_spell"]
+    passive["desc"] = {"en": dd_en["passive"].get("description", ""), "fr": dd_fr["passive"].get("description", "")}
     spells.append(passive)
     names = record.get("spellNames", [])
     for i, key in enumerate("QWER"):
         en, fr = dd_en["spells"][i], dd_fr["spells"][i]
         suffix = "/spells/" + names[i].lower() if i < len(names) else None
         entry = next((v for k, v in lower.items() if suffix and k.endswith(suffix)), None)
-        spells.append(_one_spell(key, en["id"], {"en": en["name"], "fr": fr["name"]}, en["maxrank"],
-                                 en.get("tooltip", ""), entry.get("mSpell") if entry else None))
+        spell = _one_spell(key, en["id"], {"en": en["name"], "fr": fr["name"]}, en["maxrank"],
+                           en.get("tooltip", ""), entry.get("mSpell") if entry else None)
+        # Plain description, cooldown and cost per rank ("8/7/6"); cost only when it is paid in the resource.
+        spell["desc"] = {"en": en.get("description", ""), "fr": fr.get("description", "")}
+        spell["cooldown"] = en.get("cooldownBurn") or None
+        spell["cost"] = en.get("costBurn") if "{{ cost }}" in en.get("resource", "") and en.get("costBurn") not in (None, "0") else None
+        spells.append(spell)
     return spells
 
 
@@ -616,6 +622,7 @@ def build_champions(dd_en, dd_fr, records):
             "name": {"en": en["name"], "fr": fr["name"]},
             "title": {"en": en["title"], "fr": fr["title"]},
             "tags": en.get("tags", []),  # Riot's classes: Marksman, Mage, Tank...
+            "difficulty": en.get("info", {}).get("difficulty"),  # Riot's 1-10 rating
             "resource": en.get("partype", ""),
             "base": {**base, "asratio": round(ratio, 4)},
             "adaptiveAP": adaptive_ap,
@@ -625,6 +632,59 @@ def build_champions(dd_en, dd_fr, records):
         report.append(f"base {key} taken from game files for {len(notes)} champions "
                       f"(Data Dragon differs): {', '.join(notes[:8])}{' ...' if len(notes) > 8 else ''}")
     return champs, report
+
+
+def build_summoners(en, fr):
+    """Summoner's Rift summoner spells: name and description in both languages, cooldown, icon file."""
+    out = {}
+    for sid, s in en["data"].items():
+        if "CLASSIC" not in s.get("modes", []):
+            continue
+        f = fr["data"].get(sid, s)
+        out[sid] = {"id": sid, "name": {"en": s["name"], "fr": f["name"]},
+                    "desc": {"en": s["description"], "fr": f["description"]},
+                    "cooldown": s.get("cooldownBurn"), "icon": s["image"]["full"], "level": int(s.get("summonerLevel", 1))}
+    return out
+
+
+def change_details(old, new):
+    """What changed, field by field, for the "What changed" tab: champion base stats and ability cooldowns/costs,
+    item stats and price, rune texts. [{kind, id, changes: [[field, before, after]]}]; before/after are None for
+    a change shown without numbers (an ability's details, a rune's description)."""
+    out = []
+    for cid, c in new.get("champions", {}).items():
+        o = old.get("champions", {}).get(cid)
+        if not o or o == c:
+            continue
+        ch = [["base." + k, o["base"].get(k), v] for k, v in c["base"].items() if o["base"].get(k) != v]
+        old_spells = {s["key"]: s for s in o.get("spells", [])}
+        for s in c.get("spells", []):
+            p = old_spells.get(s["key"], {})
+            for f in ("cooldown", "cost"):
+                if f in p and p.get(f) != s.get(f):
+                    ch.append([f"{s['key']}.{f}", p.get(f), s.get(f)])
+            if {k: v for k, v in p.items() if k not in ("cooldown", "cost", "desc")} != \
+                    {k: v for k, v in s.items() if k not in ("cooldown", "cost", "desc")}:
+                ch.append([f"{s['key']}.details", None, None])
+        if ch:
+            out.append({"kind": "champion", "id": cid, "changes": ch})
+    for iid, i in new.get("items", {}).items():
+        o = old.get("items", {}).get(iid)
+        if not o or o == i:
+            continue
+        ch = [["stat." + k, o["stats"].get(k), i["stats"].get(k)] for k in sorted(set(o["stats"]) | set(i["stats"]))
+              if o["stats"].get(k) != i["stats"].get(k)]
+        if o["gold"]["total"] != i["gold"]["total"]:
+            ch.append(["gold", o["gold"]["total"], i["gold"]["total"]])
+        if o.get("desc") != i.get("desc"):
+            ch.append(["desc", None, None])
+        if ch:
+            out.append({"kind": "item", "id": iid, "changes": ch})
+    for rid, r in new.get("runes", {}).get("byId", {}).items():
+        o = old.get("runes", {}).get("byId", {}).get(rid)
+        if o and o.get("desc") != r.get("desc"):
+            out.append({"kind": "rune", "id": rid, "changes": [["desc", None, None]]})
+    return out
 
 
 def diff_patches(old, new):
@@ -661,11 +721,18 @@ MERAKI = "https://cdn.merakianalytics.com/riot/lol/resources/latest/en-US/champi
 POSITIONS = ("TOP", "JUNGLE", "MIDDLE", "BOTTOM", "SUPPORT")
 
 
+RATINGS = ("damage", "toughness", "control", "mobility", "utility")
+
+
 def attach_positions(champions, meraki):
-    """Sets each champion's "positions" from Meraki's file; returns the ids it doesn't list."""
+    """Sets each champion's "positions" and 1-3 "ratings" (damage, toughness...) from Meraki's file; returns the ids
+    it doesn't list."""
     missing = []
     for cid, champ in champions.items():
-        champ["positions"] = [p for p in (meraki.get(cid) or {}).get("positions", []) if p in POSITIONS]
+        entry = meraki.get(cid) or {}
+        ratings = entry.get("attributeRatings") or {}
+        champ["ratings"] = {k: ratings[k] for k in RATINGS if isinstance(ratings.get(k), int)}
+        champ["positions"] = [p for p in entry.get("positions", []) if p in POSITIONS]
         if not champ["positions"]:
             missing.append(cid)
     return missing
@@ -694,6 +761,7 @@ def main(argv):
 
     ch_en, ch_fr = dd("en_US", "champion"), dd("fr_FR", "champion")
     it_en, it_fr = dd("en_US", "item"), dd("fr_FR", "item")
+    summoners = build_summoners(dd("en_US", "summoner"), dd("fr_FR", "summoner"))
     rr_en, rr_fr = dd("en_US", "runesReforged"), dd("fr_FR", "runesReforged")
     items_bin = cd("game/items.cdtb.bin.json")
 
@@ -758,7 +826,7 @@ def main(argv):
     survival_words = re.compile(r"shield|heal|restore|stasis|revive|cleanse|Lifeline", re.I)
     possible_survival = sorted(i for i, it in items.items()
                                if it["tier"] == 5 and survival_words.search(outside_stats(it["desc"]["en"])))
-    data = {"patch": patch, "champions": champions, "items": items, "groups": groups, "runes": runes,
+    data = {"patch": patch, "champions": champions, "items": items, "groups": groups, "runes": runes, "summoners": summoners,
             "rules": RULES, "review": {"possibleStatPassives": possible_passives, "possibleRuneStats": possible_runes,
                                        "possibleItemDamage": possible_item_damage,
                                        "possibleRuneDamage": possible_rune_damage,
@@ -769,7 +837,9 @@ def main(argv):
     out_dir.mkdir(exist_ok=True)
     previous = sorted((p for p in out_dir.glob("*.json") if p.stem != patch),
                       key=lambda p: [int(x) for x in p.stem.split(".")])
-    diff = diff_patches(json.loads(previous[-1].read_text(encoding="utf-8")), data) if previous else []
+    old = json.loads(previous[-1].read_text(encoding="utf-8")) if previous else {}
+    diff = diff_patches(old, data) if previous else []
+    data["review"]["changes"] = change_details(old, data) if previous else []
     changed = {"item": [], "champion": [], "rune": []}
     for line in diff:
         kind, label, key = line.split()

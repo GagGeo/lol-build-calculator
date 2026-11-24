@@ -1,6 +1,6 @@
 import unittest
 
-from prep import attach_positions, parse_item_stats, build_items, build_runes, build_champions, diff_patches, normalize_calc, parse_damage_lines, build_spells, skill_rank_flags, passive_stat_words, parse_heal_lines
+from prep import attach_positions, build_summoners, change_details, parse_item_stats, build_items, build_runes, build_champions, diff_patches, normalize_calc, parse_damage_lines, build_spells, skill_rank_flags, passive_stat_words, parse_heal_lines
 
 CLEAVER = ("<mainText><stats><attention>45</attention> Attack Damage<br>"
            "<attention>400</attention> Health<br><attention>20</attention> Ability Haste"
@@ -560,6 +560,35 @@ class AttachPositionsTest(unittest.TestCase):
         self.assertEqual(champs["Garen"]["positions"], ["TOP"])
         self.assertEqual(champs["Newbie"]["positions"], [])
         self.assertEqual(missing, ["Newbie"])
+
+
+
+class SummonersAndChangesTest(unittest.TestCase):
+    def test_summoners_keep_rift_spells(self):
+        en = {"data": {"SummonerFlash": {"name": "Flash", "description": "Blink.", "cooldownBurn": "300", "modes": ["CLASSIC", "ARAM"],
+                                         "image": {"full": "SummonerFlash.png"}, "summonerLevel": 7},
+                       "SummonerSnowball": {"name": "Mark", "description": "x", "modes": ["ARAM"], "image": {"full": "x.png"}}}}
+        fr = {"data": {"SummonerFlash": {"name": "Saut éclair", "description": "Saute."}}}
+        out = build_summoners(en, fr)
+        self.assertEqual(list(out), ["SummonerFlash"])
+        self.assertEqual(out["SummonerFlash"]["name"], {"en": "Flash", "fr": "Saut éclair"})
+        self.assertEqual(out["SummonerFlash"]["cooldown"], "300")
+
+    def test_change_details(self):
+        old = {"champions": {"Jinx": {"base": {"ad": 59, "hp": 630}, "spells": [{"key": "Q", "cooldown": "1", "values": {"a": [1]}}]}},
+               "items": {"1": {"stats": {"ad": 10}, "gold": {"total": 350}, "desc": "d"}}, "runes": {"byId": {"8": {"desc": "a"}}}}
+        new = {"champions": {"Jinx": {"base": {"ad": 62, "hp": 630}, "spells": [{"key": "Q", "cooldown": "0.9", "values": {"a": [2]}}]}},
+               "items": {"1": {"stats": {"ad": 12}, "gold": {"total": 350}, "desc": "d"}}, "runes": {"byId": {"8": {"desc": "b"}}}}
+        ch = {(c["kind"], c["id"]): c["changes"] for c in change_details(old, new)}
+        self.assertEqual(ch[("champion", "Jinx")], [["base.ad", 59, 62], ["Q.cooldown", "1", "0.9"], ["Q.details", None, None]])
+        self.assertEqual(ch[("item", "1")], [["stat.ad", 10, 12]])
+        self.assertEqual(ch[("rune", "8")], [["desc", None, None]])
+        self.assertEqual(change_details(new, new), [])
+
+    def test_meraki_ratings(self):
+        champs = {"Ahri": {}}
+        attach_positions(champs, {"Ahri": {"positions": ["MIDDLE"], "attributeRatings": {"damage": 3, "toughness": 1, "abilityReliance": 100}}})
+        self.assertEqual(champs["Ahri"]["ratings"], {"damage": 3, "toughness": 1})
 
 
 if __name__ == "__main__":

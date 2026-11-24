@@ -30,6 +30,7 @@ const champIcon = (id) => `${IMG}champion/${id}.png`;
 const runeIcon = (path) => `https://ddragon.leagueoflegends.com/cdn/img/${path}`; // rune pictures are not per patch
 const SHARD_ICONS = {5008: 'AdaptiveForce', 5005: 'AttackSpeed', 5007: 'CDRScaling', 5010: 'MovementSpeed',
   5001: 'HealthScaling', 5011: 'HealthPlus', 5013: 'Tenacity'};
+const summonerIcon = (id) => `${IMG}spell/${DATA.summoners[id].icon}`;
 const shardIcon = (id) => runeIcon(`perk-images/StatMods/StatMods${SHARD_ICONS[id]}Icon.png`);
 const icon = (src, cls = '') => {
   const img = el('img', {src, alt: '', class: ('icon ' + cls).trim(), loading: 'lazy'});
@@ -418,6 +419,31 @@ function createPanel(container, side, onChange) {
   render();
   return {getSelection: () => ({...state, items: state.items.slice(), buffs: {...state.buffs}, combo: state.combo.map((s) => ({...s}))}),
           setLang: render, results: ui.results, section, setChamp: chooseChamp,
+          // A shared link's setup: every value is checked, since the link may come from anyone.
+          share: () => ({c: state.champ, l: state.level, i: state.items, r: state.runes, s: state.stacked, k: state.stacks,
+            b: state.buffs, p: state.priority.join(''), h: state.currentHpPct, g: state.gold}),
+          loadShare: (o) => {
+            if (!o || typeof o !== 'object' || typeof o.c !== 'string' || !Object.hasOwn(DATA.champions, o.c)) return false;
+            switchChamp(o.c);
+            state.level = Engine.clampLevel(o.l);
+            const items = (Array.isArray(o.i) ? o.i : []).slice(0, 6).map((x) => (typeof x === 'string' && Object.hasOwn(DATA.items, x) ? x : null));
+            while (items.length < 6) items.push(null);
+            state.items = Engine.pruneBuild(DATA, state.champ, items).items;
+            state.runes = Engine.normalizeRunePage(DATA, o.r && typeof o.r === 'object' ? o.r : {});
+            state.stacked = o.s === true;
+            state.stacks = Math.max(0, Math.min(10000, Math.round(Number(o.k)) || 0));
+            state.buffs = {};
+            for (const b of DATA.rules.buffs || []) {
+              const n = Math.round(Number((o.b && typeof o.b === 'object' ? o.b : {})[b.id]) || 0);
+              if (n > 0) state.buffs[b.id] = Math.min(n, b.byMinute ? b.byMinute[1] : b.max || 1);
+            }
+            if (PRIORITIES.includes(o.p)) state.priority = o.p.split('');
+            state.currentHpPct = Engine.clampPct(o.h);
+            state.gold = Math.max(0, Math.min(1e6, Math.round(Number(o.g)) || 0));
+            removedNotice = '';
+            render();
+            return true;
+          },
           setRunes: (page) => { state.runes = Engine.normalizeRunePage(DATA, JSON.parse(JSON.stringify(page))); render(); },
           setItems: (items, gold) => { state.items = items.slice(); if (gold !== undefined) state.gold = gold; removedNotice = ''; render(); },
           // Load a whole build (from the rankings); rows are already legal for their champion.
@@ -1086,7 +1112,12 @@ function createChampionsTab(section) {
           : t('abilityDamage', {damage: fmt(sp.damage, 0), type: t('type_' + sp.type)}) + (sp.perHit ? ' ' + t('perHit') : '')
             + (sp.key !== 'P' ? ` (${t('rank').toLowerCase()} ${sp.rank})` : '')
             + (sp.ratios.length ? '. ' + t('abilityScales', {list: sp.ratios.map((r) => `${fmt(100 * r.ratio, 0)}% ${t('stat_' + r.stat)}`).join(', ')}) : '');
-        return el('li', {}, el('strong', {text: head}), text);
+        const spell = DATA.champions[id].spells.find((x) => x.key === sp.key) || {};
+        const res = DATA.champions[id].resource;
+        const resName = res === 'Mana' ? t('stat_mp') : res === 'Energy' ? t('stat_energy') : res;
+        const extra = [stripTags(nm(spell.desc || {en: ''})), spell.cooldown ? t('abilityCooldown', {cd: spell.cooldown}) : '',
+          spell.cost ? t('abilityCost', {cost: spell.cost, resource: resName}) : ''].filter(Boolean).join(' ');
+        return el('li', {}, el('strong', {text: head}), text, ...(extra ? [el('span', {class: 'ability-desc', text: extra})] : []));
       }));
     };
     range.addEventListener('input', () => { abilityLevel = Number(range.value); update(); });
@@ -1103,6 +1134,12 @@ function createChampionsTab(section) {
     const parts = [el('div', {class: 'card-head'}, icon(champIcon(selected), 'champ'),
       el('div', {}, el('h3', {text: nm(c.name)}), el('p', {class: 'note', text: nm(c.title)}))),
       el('p', {text: `${t('champRole')}: ${roles(c)}`}), el('p', {text: `${t('champClass')}: ${classes(c)}`}),
+      ...(c.difficulty ? [el('p', {text: t('champDifficultyLine', {n: c.difficulty})})] : []),
+      ...(Object.keys(c.ratings || {}).length ? [el('div', {class: 'ratings'}, ...['damage', 'toughness', 'control', 'mobility', 'utility']
+        .filter((k) => c.ratings[k]).map((k) => [k, c.ratings[k]]).flatMap(([k, v]) => [
+        el('span', {text: t('rating_' + k)}),
+        el('span', {class: 'pips', role: 'img', 'aria-label': `${v}/3`}, ...[1, 2, 3].map((n) => el('span', {class: n <= v ? 'on' : ''})))])),
+      el('p', {class: 'note', text: t('ratingsNote')})] : []),
       el('h4', {text: t('champScales')})];
     if ((c.tags || []).includes('Marksman')) parts.push(el('p', {text: t('champMarksman')}));
     if (s.stats.length) {
@@ -1119,6 +1156,10 @@ function createChampionsTab(section) {
     if (typeof GUIDE === 'object') {
       const runes = usualRunes(selected);
       parts.push(el('div', {class: 'block'}, ...beginnerBuild(selected)),
+        ...(roleOf((c.positions || [])[0]) ? [el('div', {class: 'block'}, el('h4', {text: t('champSummoners')}),
+          el('p', {}, ...roleOf(c.positions[0]).spells.flatMap((x, i) => [...(i ? [' + '] : []), summonerButton(x)]),
+            ' ' + t('champSummonersFor', {role: t('role_' + c.positions[0])})),
+          el('p', {class: 'note', text: pick(roleOf(c.positions[0]).why)}))] : []),
         el('div', {class: 'block'}, el('h4', {text: t('runePage')}), runePageNodes(runes.page),
           el('p', {class: 'note', text: pick(runes.why) + ' ' + t('runePageFrom', {tag: t('tag_' + runes.tag)})})),
         el('div', {class: 'block'}, ...abilities(selected)));
@@ -1156,12 +1197,12 @@ function createChampionsTab(section) {
         && (!ui.scales.value || (scaleOf(id).stats.length > 0 && top(id).some((x) => x.stat === ui.scales.value)));
     }).sort((a, b) => byName(DATA.champions[a], DATA.champions[b]));
     ui.count.textContent = t('champsCount', {n: ids.length});
-    const head = el('thead', {}, el('tr', {}, ...['champion', 'champRole', 'champClass', 'champScales']
+    const head = el('thead', {}, el('tr', {}, ...['champion', 'champRole', 'champClass', 'champScales', 'champDifficulty']
       .map((k) => el('th', {scope: 'col', text: t(k)}))));
     ui.table.replaceChildren(head, el('tbody', {}, ...ids.map((id) => {
       const c = DATA.champions[id];
       return el('tr', {}, el('th', {scope: 'row'}, link(id)), el('td', {text: roles(c)}), el('td', {text: classes(c)}),
-        el('td', {text: scalesText(id)}));
+        el('td', {text: scalesText(id)}), el('td', {text: c.difficulty ? `${c.difficulty}/10` : '—'}));
     })));
     ui.note.textContent = t('champRoleNote');
     renderCard();
@@ -1176,7 +1217,12 @@ function createChampionsTab(section) {
   for (const s of [ui.role, ui.tag, ui.scales]) s.addEventListener('change', render);
   ui.search.addEventListener('input', render);
   render();
-  return {setLang: render, open: (id) => { if (TABS.includes('champions')) showTab('champions'); open(id); }};
+  return {setLang: render, open: (id) => { if (TABS.includes('champions')) showTab('champions'); open(id); },
+    // Show every champion of one role (from the Start here tab).
+    showRole: (role) => {
+      ui.role.value = role; ui.tag.value = ''; ui.scales.value = ''; ui.search.value = ''; selected = null;
+      showTab('champions'); render(); ui.table.scrollIntoView({behavior: 'smooth', block: 'start'});
+    }};
 }
 let championsTab = null;
 
@@ -1294,6 +1340,13 @@ const usualRunes = (champId) => {
   const c = GUIDE.CLASSES.find((x) => x.tag === tag);
   return {tag, why: c.runes.why, page: Engine.runePageFrom(DATA, c.runes)};
 };
+const summonerButton = (id) => {
+  const b = linkButton(nm(DATA.summoners[id].name), () => summonersTab && summonersTab.open(id));
+  b.prepend(icon(summonerIcon(id)));
+  return b;
+};
+const stripTags = (html) => (html || '').replace(/<br\s*\/?>/g, ' ').replace(/<[^>]+>/g, '').replace(/\s+/g, ' ').trim();
+const roleOf = (key) => (typeof GUIDE === 'object' ? GUIDE.ROLES.find((r) => r.key === key) : null);
 const champButton = (id, action) => {
   const b = linkButton(nm(DATA.champions[id].name), action);
   b.prepend(icon(champIcon(id), 'champ'));
@@ -1457,9 +1510,89 @@ function createSourcesTab(section) {
 }
 let sourcesTab = null;
 
+// "Start here" tab: how to begin, then each role: what it does, its usual summoner spells, its easiest champions.
+function createStartTab(section) {
+  function render() {
+    const easiest = (role) => Object.keys(DATA.champions).filter((id) => (DATA.champions[id].positions || []).includes(role) && DATA.champions[id].difficulty)
+      .sort((a, b) => DATA.champions[a].difficulty - DATA.champions[b].difficulty || byName(DATA.champions[a], DATA.champions[b])).slice(0, 6);
+    section.replaceChildren(el('h2', {text: t('tabStart')}), el('p', {text: t('startIntro')}),
+      el('ol', {}, ...GUIDE.START.map((s) => el('li', {}, ...glossaryNodes(pick(s))))),
+      el('div', {class: 'guide-cards'}, ...GUIDE.ROLES.map((r) => {
+        const all = linkButton(t('roleAll', {role: t('role_' + r.key)}), () => championsTab && championsTab.showRole(r.key));
+        return el('article', {class: 'item-card'}, el('h4', {text: t('role_' + r.key)}), el('p', {}, ...glossaryNodes(pick(r.what))),
+          el('p', {}, t('champSummoners') + ': ', ...r.spells.flatMap((x, i) => [...(i ? [' + '] : []), summonerButton(x)])),
+          el('p', {class: 'guide-label', text: t('roleEasiest')}),
+          el('ul', {}, ...easiest(r.key).map((id) => el('li', {}, champButton(id, () => championsTab && championsTab.open(id)),
+            ' ' + t('difficultyShort', {n: DATA.champions[id].difficulty})))),
+          el('p', {}, all));
+      })),
+      el('p', {class: 'note', text: t('startNote')}));
+  }
+  render();
+  return {setLang: render};
+}
+let startTab = null;
+
+// "Summoner spells" tab: the usual pair per role, then a card per spell.
+function createSummonersTab(section) {
+  function render() {
+    const ids = Object.keys(DATA.summoners).sort((a, b) => byName(DATA.summoners[a], DATA.summoners[b]));
+    section.replaceChildren(el('h2', {text: t('tabSummoners')}), el('p', {text: t('summonersIntro')}),
+      el('h3', {text: t('summonersPairs')}),
+      el('ul', {}, ...GUIDE.ROLES.map((r) => el('li', {}, el('strong', {text: t('role_' + r.key) + ': '}),
+        ...r.spells.flatMap((x, i) => [...(i ? [' + '] : []), summonerButton(x)]), '. ' + pick(r.why)))),
+      el('div', {class: 'guide-cards'}, ...ids.map((id) => {
+        const s = DATA.summoners[id], usual = GUIDE.ROLES.filter((r) => r.spells.includes(id));
+        return el('article', {class: 'item-card', id: 'summoner-' + id, tabindex: -1},
+          el('div', {class: 'card-head small'}, icon(summonerIcon(id)), el('div', {}, el('h4', {text: nm(s.name)}),
+            ...(s.cooldown ? [el('p', {class: 'rune-row', text: t('summonerCooldown', {n: s.cooldown})})] : []))),
+          el('p', {text: stripTags(nm(s.desc))}),
+          ...(usual.length ? [el('p', {class: 'note', text: t('summonerUsual') + ' ' + usual.map((r) => t('role_' + r.key)).join(', ')})] : []));
+      })));
+  }
+  function open(id) {
+    showTab('summoners');
+    const card = section.querySelector('#summoner-' + id);
+    if (card) { card.scrollIntoView({behavior: 'smooth', block: 'start'}); card.focus({preventScroll: true}); }
+  }
+  render();
+  return {setLang: render, open};
+}
+let summonersTab = null;
+
+// "What changed" tab: champion, item and rune changes since the previous patch the site had (prep.py change_details).
+function createChangesTab(section) {
+  const field = (f) => {
+    const [a, b] = f.split('.');
+    if (a === 'base') return b.endsWith('perlevel') ? `${t('stat_' + b.replace('perlevel', ''))} ${t('changePerLevel')}`
+      : b === 'asratio' ? t('changeAsRatio') : t('stat_' + b);
+    if (a === 'stat') return t('stat_' + b);
+    if (b === 'cooldown' || b === 'cost' || b === 'details') return t('change_' + b, {key: a === 'P' ? t('passive') : a});
+    return t('change_' + a);
+  };
+  const line = ([f, from, to]) => el('li', {text: field(f) + (from === null && to === null ? '' : `: ${from ?? '—'} → ${to ?? '—'}`)});
+  function render() {
+    const review = DATA.review || {}, changes = review.changes || [];
+    const group = (kind, title, button) => {
+      const list = changes.filter((c) => c.kind === kind && (kind === 'rune' ? DATA.runes.byId[c.id] : kind === 'item' ? DATA.items[c.id] : DATA.champions[c.id]));
+      return list.length ? [el('h3', {text: title}), el('div', {class: 'guide-cards'}, ...list.map((c) => el('article', {class: 'item-card'},
+        el('p', {}, button(c.id)), el('ul', {}, ...c.changes.map(line)))))] : [];
+    };
+    const body = !review.comparedWith ? [el('p', {text: t('changesNone')})]
+      : !changes.length ? [el('p', {text: t('changesNothing')})]
+        : [...group('champion', t('tabChampions'), (id) => champButton(id, () => championsTab && championsTab.open(id))),
+          ...group('item', t('tabItems'), itemButton), ...group('rune', t('tabRunes'), runeButton)];
+    section.replaceChildren(el('h2', {text: t('tabChanges')}),
+      ...(review.comparedWith ? [el('p', {text: t('changesIntro', {patch: DATA.patch, old: review.comparedWith})})] : []), ...body);
+  }
+  render();
+  return {setLang: render};
+}
+let changesTab = null;
+
 // Tabs: the calculator (panels + advisor), the rankings and the champion optimizer. The choice is remembered.
 // Only tabs present in the page: a cached older index.html next to a newer app.js must not break the page.
-const TABS = ['calculator', 'rankings', 'optimize', 'champions', 'classes', 'items', 'runes', 'guide', 'glossary', 'sources'].filter((id) => document.getElementById(id) && document.getElementById('tab-' + id));
+const TABS = ['calculator', 'rankings', 'optimize', 'champions', 'classes', 'start', 'items', 'runes', 'summoners', 'guide', 'glossary', 'changes', 'sources'].filter((id) => document.getElementById(id) && document.getElementById('tab-' + id));
 function showTab(name) {
   for (const [tab, panel] of TABS.map((x) => [x, x])) {
     const selected = tab === name;
@@ -1531,6 +1664,10 @@ function renderPage() {
   if (guideTab) guideTab.setLang();
   if (glossaryTab) glossaryTab.setLang();
   if (sourcesTab) sourcesTab.setLang();
+  for (const [tab, name, key] of [[startTab, 'start', 'tabStart'], [summonersTab, 'summoners', 'tabSummoners'], [changesTab, 'changes', 'tabChanges']]) {
+    if (tab) { tab.setLang(); document.getElementById('tab-' + name).textContent = t(key); }
+  }
+  shareButton.textContent = t('shareLink');
   document.getElementById('tab-calculator').textContent = t('tabCalculator');
   document.getElementById('tab-rankings').textContent = t('tabRankings');
   if (optimizer) document.getElementById('tab-optimize').textContent = t('tabOptimize');
@@ -1555,7 +1692,18 @@ addEnemyButton.addEventListener('click', () => {
   setEnemyShown(true);
   panels[1].section.scrollIntoView();
 });
-container.after(addEnemyButton);
+// A link that opens this exact setup: both panels, encoded in the address after #b=.
+const shareButton = el('button', {type: 'button'}), shareStatus = el('p', {class: 'note', role: 'status'});
+const encodeShare = (o) => btoa(unescape(encodeURIComponent(JSON.stringify(o)))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+const decodeShare = (s) => JSON.parse(decodeURIComponent(escape(atob(s.replace(/-/g, '+').replace(/_/g, '/')))));
+shareButton.addEventListener('click', () => {
+  const url = `${location.origin}${location.pathname}#b=${encodeShare({y: panels[0].share(), e: enemyShown ? panels[1].share() : null})}`;
+  history.replaceState(null, '', url);
+  const done = (key) => { shareStatus.textContent = t(key); };
+  if (navigator.clipboard) navigator.clipboard.writeText(url).then(() => done('shareCopied'), () => done('shareInAddress'));
+  else done('shareInAddress');
+});
+container.after(addEnemyButton, el('div', {class: 'share-row'}, shareButton, shareStatus));
 panels.push(createPanel(container, 'you', renderMatchup));
 panels.push(createPanel(container, 'enemy', renderMatchup));
 advisor = createAdvisor(document.getElementById('advisor'));
@@ -1568,6 +1716,9 @@ if (TABS.includes('champions')) championsTab = createChampionsTab(document.getEl
 if (TABS.includes('classes') && typeof GUIDE === 'object') classesTab = createClassesTab(document.getElementById('classes'));
 if (TABS.includes('guide') && typeof GUIDE === 'object') guideTab = createGuideTab(document.getElementById('guide'));
 if (TABS.includes('glossary') && typeof GUIDE === 'object') glossaryTab = createGlossaryTab(document.getElementById('glossary'));
+if (TABS.includes('start') && typeof GUIDE === 'object') startTab = createStartTab(document.getElementById('start'));
+if (TABS.includes('summoners') && typeof GUIDE === 'object') summonersTab = createSummonersTab(document.getElementById('summoners'));
+if (TABS.includes('changes')) changesTab = createChangesTab(document.getElementById('changes'));
 if (TABS.includes('sources') && typeof GUIDE === 'object') sourcesTab = createSourcesTab(document.getElementById('sources'));
 const ROW = TABS.filter((name) => document.getElementById('tab-' + name).getAttribute('role') === 'tab'); // Sources is in the footer
 TABS.forEach((name) => {
@@ -1584,3 +1735,14 @@ TABS.forEach((name) => {
 });
 showTab((() => { try { const s = storage.getItem('tab'); return TABS.includes(s) ? s : 'calculator'; } catch { return 'calculator'; } })());
 renderPage();
+// Opened from a shared link: load its setup into the calculator. A broken link is ignored.
+(() => {
+  const m = location.hash.match(/^#b=([\w-]{1,4000})$/);
+  if (!m) return;
+  try {
+    const o = decodeShare(m[1]);
+    if (!panels[0].loadShare(o.y)) return;
+    if (o.e && panels[1].loadShare(o.e)) setEnemyShown(true);
+    showTab('calculator');
+  } catch { /* not a link this page made */ }
+})();

@@ -78,3 +78,9 @@ test('class rune pages and tree texts: both languages', () => {
   }
   Object.entries(GUIDE.TREES).forEach(([id, x]) => both(x, id));
 });
+
+test('start here: roles and steps in both languages', () => {
+  assert.deepEqual(GUIDE.ROLES.map((r) => r.key), ['TOP', 'JUNGLE', 'MIDDLE', 'BOTTOM', 'SUPPORT']);
+  for (const r of GUIDE.ROLES) { both(r.what, r.key); both(r.why, r.key); assert.equal(r.spells.length, 2, r.key); }
+  GUIDE.START.forEach((s, i) => both(s, 'step ' + i));
+});

@@ -363,3 +363,15 @@ test('class rune pages: every rune name exists and every page is complete and va
   for (const t of D.runes.trees) assert.ok(GUIDE.TREES[t.id], `tree ${t.id} described`);
   for (const r of Object.values(D.runes.byId)) assert.ok(r.icon, `rune ${r.id} icon`);
 });
+
+test('new-player data: summoner spells, difficulty, ratings, ability texts', () => {
+  const GUIDE = require('./guide.js');
+  for (const r of GUIDE.ROLES) r.spells.forEach((s) => assert.ok(D.summoners[s], `${r.key}: ${s}`));
+  assert.ok(D.summoners.SummonerFlash.name.fr && D.summoners.SummonerFlash.cooldown);
+  const champs = Object.values(D.champions);
+  assert.ok(champs.filter((c) => c.difficulty >= 1 && c.difficulty <= 10).length > 160);
+  assert.ok(champs.filter((c) => Object.keys(c.ratings).length === 5).length > 160);
+  for (const c of champs) for (const s of c.spells) assert.ok(s.desc && typeof s.desc.en === 'string', `${c.id} ${s.key}`);
+  assert.equal(D.champions.Ahri.spells.find((s) => s.key === 'W').cooldown, '9/8/7/6/5');
+  assert.ok(Array.isArray(D.review.changes));
+});
