@@ -58,21 +58,29 @@ function createStatsView() {
     toggle.setAttribute('aria-expanded', String(detailed));
     const breakdown = detailed ? Engine.statBreakdown(DATA, sel) : null;
     const s = breakdown ? breakdown.stats : Engine.championStats(DATA, sel);
-    const cols = breakdown ? breakdown.columns.filter((c) => c.kind === 'item' || Object.keys(c.values).length) : [];
-    const colName = (c) => (c.kind === 'item' ? nm(DATA.items[c.id].name) : t(c.kind === 'champion' ? 'champion' : c.kind));
-    const head = el('tr', {}, ...[t('stat'), t('base'), ...(breakdown ? cols.map(colName) : [t('bonus')]), t('total')]
-      .map((text) => el('th', {scope: 'col', text})));
+    const cols = breakdown ? breakdown.columns : [];
+    const head = el('tr', {}, ...[t('stat'), t('base'), t('bonus'), t('total')].map((text) => el('th', {scope: 'col', text})));
+    // Details: under each stat, one chip per source that gives it (item picture, or Runes / Champion), so the table
+    // keeps its four columns however many items there are.
+    const chip = (c, v) => {
+      if (c.kind !== 'item') return el('span', {class: 'part'}, el('span', {class: 'part-name', text: t(c.kind === 'champion' ? 'champion' : c.kind)}), v);
+      const name = nm(DATA.items[c.id].name);
+      return el('span', {class: 'part', title: name}, icon(itemIcon(c.id)), el('span', {class: 'sr-only', text: name + ' '}), v);
+    };
     // Mana only means something for mana users; energy users get it relabelled; other resources are hidden.
     const resource = DATA.champions[sel.champ].resource;
     const shown = (k) => k !== 'mp' || resource === 'Mana' || resource === 'Energy';
     const signed = (k, v) => (!v || Math.abs(v) < 1e-9 ? '' : k === 'as' ? fmt(v) + '%' : (v > 0 ? '+' : '') + fmt(v, k === 'as' ? 3 : 1));
     const keys = STAT_ORDER.filter((k) => shown(k) && ((s.base[k] || 0) || (s.bonus[k] || 0) || (s.total[k] || 0)));
-    const rows = keys.map((k) => {
+    const rows = keys.flatMap((k) => {
       const digits = k === 'as' ? 3 : 1;
       const statName = k === 'mp' && resource === 'Energy' ? t('stat_energy') : t('stat_' + k);
-      const middle = breakdown ? cols.map((c) => el('td', {text: signed(k, c.values[k])})) : [el('td', {text: signed(k, s.bonus[k])})];
-      return el('tr', {}, el('th', {scope: 'row', text: statName}), el('td', {text: s.base[k] ? fmt(s.base[k], digits) : ''}),
-        ...middle, el('td', {class: 'total', text: fmt(s.total[k] ?? 0, digits)}));
+      const row = el('tr', {}, el('th', {scope: 'row', text: statName}), el('td', {text: s.base[k] ? fmt(s.base[k], digits) : ''}),
+        el('td', {text: signed(k, s.bonus[k])}), el('td', {class: 'total', text: fmt(s.total[k] ?? 0, digits)}));
+      const parts = cols.filter((c) => signed(k, c.values[k])).map((c) => chip(c, signed(k, c.values[k])));
+      if (!parts.length) return [row];
+      row.className = 'has-parts';
+      return [row, el('tr', {class: 'parts'}, el('td', {colspan: '4'}, ...parts))];
     });
     table.replaceChildren(el('thead', {}, head), el('tbody', {}, ...rows));
     const odd = breakdown ? breakdown.notAdditive.filter((k) => keys.includes(k)) : [];
