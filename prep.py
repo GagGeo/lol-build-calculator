@@ -139,7 +139,8 @@ def build_items(dd_en, dd_fr, items_bin):
 
 
 def build_runes(rr_en, rr_fr):
-    """Rune trees and runes in DATA.runes shape, names and descriptions in both languages."""
+    """Rune trees and runes in DATA.runes shape: names, short and long descriptions in both languages, and the
+    icon path under Data Dragon's /cdn/img/ ("perk-images/...")."""
     fr_names = {r["id"]: r for tree in rr_fr for slot in tree["slots"] for r in slot["runes"]}
     fr_trees = {t["id"]: t for t in rr_fr}
     trees, by_id = [], {}
@@ -151,10 +152,11 @@ def build_runes(rr_en, rr_fr):
                 fr = fr_names.get(r["id"], r)
                 by_id[str(r["id"])] = {"id": r["id"], "name": {"en": r["name"], "fr": fr["name"]},
                                        "desc": {"en": r["longDesc"], "fr": fr["longDesc"]},
-                                       "tree": tree["id"], "row": row}
+                                       "short": {"en": r.get("shortDesc", ""), "fr": fr.get("shortDesc", "")},
+                                       "icon": r.get("icon", ""), "tree": tree["id"], "row": row}
         trees.append({"id": tree["id"], "key": tree["key"],
                       "name": {"en": tree["name"], "fr": fr_trees.get(tree["id"], tree)["name"]},
-                      "slots": slots})
+                      "icon": tree.get("icon", ""), "slots": slots})
     return {"trees": trees, "byId": by_id}
 
 

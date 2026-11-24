@@ -539,9 +539,12 @@ const GUIDE = (() => {
   ];
 
   // Classes tab, one card per Riot class (Data Dragon tags). "keyStats": weights for ranking items (Engine.classItems);
+  // "runes": the usual page, by English rune names (Engine.runePageFrom) and stat shard ids, with why the keystone;
   // "strong"/"weak": other classes it tends to beat or lose to, with why.
   const CLASSES = [
-    {tag: 'Fighter', keyStats: {ad: 2, hp: 2, ah: 1, omnivamp: 1},
+    {tag: 'Fighter', runes: {keystone: 'Conqueror', primary: ['Triumph', 'Legend: Haste', 'Last Stand'], secondary: ['Second Wind', 'Unflinching'], shards: [5008, 5008, 5001],
+      why: {en: 'Conqueror grows your damage and healing the longer a fight lasts, which is how fighters win.', fr: 'Conquérant augmente vos dégâts et vos soins à mesure que le combat dure : c\'est ainsi que gagnent les combattants.'}},
+      keyStats: {ad: 2, hp: 2, ah: 1, omnivamp: 1},
       what: {en: 'Fighters deal steady damage up close and can take a beating. They win long fights rather than one-shot.',
         fr: 'Les combattants infligent des dégâts réguliers au contact et encaissent bien. Ils gagnent les combats longs plutôt qu\'en un coup.'},
       pros: [{en: 'Good damage and good health at once.', fr: 'De bons dégâts et de bons PV à la fois.'},
@@ -552,7 +555,9 @@ const GUIDE = (() => {
         {tag: 'Tank', en: 'they keep dealing damage while the tank can\'t', fr: 'ils continuent de frapper quand le tank ne peut pas'}],
       weak: [{tag: 'Marksman', en: 'shot from range while walking up', fr: 'touchés de loin en approchant'},
         {tag: 'Mage', en: 'slowed and poked before reaching them', fr: 'ralentis et harcelés avant de les atteindre'}]},
-    {tag: 'Tank', keyStats: {hp: 2, armor: 2, mr: 2, ah: 1},
+    {tag: 'Tank', runes: {keystone: 'Aftershock', primary: ['Font of Life', 'Conditioning', 'Overgrowth'], secondary: ['Magical Footwear', 'Cosmic Insight'], shards: [5007, 5001, 5001],
+      why: {en: 'Aftershock makes you much tougher right after you stun or knock up someone: you start the fight and survive it.', fr: 'Après-coup vous rend bien plus solide juste après avoir étourdi ou projeté quelqu\'un : vous lancez le combat et y survivez.'}},
+      keyStats: {hp: 2, armor: 2, mr: 2, ah: 1},
       what: {en: 'Tanks soak damage and lock enemies down with crowd control so their team can hit them.',
         fr: 'Les tanks absorbent les dégâts et immobilisent les ennemis pour que leur équipe puisse frapper.'},
       pros: [{en: 'Very hard to kill; they start fights and protect carries.', fr: 'Très durs à tuer ; ils lancent les combats et protègent les carrys.'},
@@ -562,7 +567,9 @@ const GUIDE = (() => {
       strong: [{tag: 'Assassin', en: 'too tanky to burst, and their crowd control stops the dive', fr: 'trop solides pour être tués d\'un coup, et leurs contrôles arrêtent le plongeon'}],
       weak: [{tag: 'Marksman', en: 'steady damage, penetration % and on-hit health damage', fr: 'dégâts réguliers, pénétration % et dégâts en % des PV'},
         {tag: 'Mage', en: 'magic penetration % and health-based burns (Liandry\'s)', fr: 'pénétration magique % et brûlures en % des PV (Liandry)'}]},
-    {tag: 'Mage', keyStats: {ap: 3, magicPen: 2, magicPenPct: 1, ah: 1},
+    {tag: 'Mage', runes: {keystone: 'Arcane Comet', primary: ['Manaflow Band', 'Transcendence', 'Scorch'], secondary: ['Biscuit Delivery', 'Cosmic Insight'], shards: [5008, 5008, 5011],
+      why: {en: 'Arcane Comet adds damage to every ability that hits a champion, from range and with no risk.', fr: 'Comète arcanique ajoute des dégâts à chaque sort qui touche un champion, de loin et sans risque.'}},
+      keyStats: {ap: 3, magicPen: 2, magicPenPct: 1, ah: 1},
       what: {en: 'Mages deal magic damage with their abilities from range: burst, poke or area damage.',
         fr: 'Les mages infligent des dégâts magiques avec leurs sorts à distance : explosion, harcèlement ou zone.'},
       pros: [{en: 'High damage from a safe distance, often to several enemies.', fr: 'Beaucoup de dégâts à distance de sécurité, souvent sur plusieurs ennemis.'},
@@ -572,7 +579,9 @@ const GUIDE = (() => {
       strong: [{tag: 'Fighter', en: 'slows and range keep them away', fr: 'ralentissements et portée les tiennent à distance'},
         {tag: 'Tank', en: 'magic penetration % and health-based damage', fr: 'pénétration magique % et dégâts en % des PV'}],
       weak: [{tag: 'Assassin', en: 'jumped on and killed before casting', fr: 'attrapés et tués avant de lancer leurs sorts'}]},
-    {tag: 'Assassin', keyStats: {ad: 2, lethality: 3, ah: 1},
+    {tag: 'Assassin', runes: {keystone: 'Electrocute', primary: ['Sudden Impact', 'Grisly Mementos', 'Treasure Hunter'], secondary: ['Absolute Focus', 'Gathering Storm'], shards: [5008, 5008, 5011],
+      why: {en: 'Electrocute adds a burst of damage when you hit a champion three times quickly: exactly an assassin\'s combo.', fr: 'Électrocution ajoute une explosion de dégâts quand vous touchez un champion trois fois rapidement : exactement le combo d\'un assassin.'}},
+      keyStats: {ad: 2, lethality: 3, ah: 1},
       what: {en: 'Assassins jump on one fragile target, kill it in a burst, then get away. AP assassins build mage items instead.',
         fr: 'Les assassins sautent sur une cible fragile, la tuent d\'un coup, puis s\'enfuient. Les assassins AP prennent plutôt des objets de mage.'},
       pros: [{en: 'Kill mages and marksmen before they can act.', fr: 'Tuent mages et tireurs avant qu\'ils agissent.'},
@@ -583,7 +592,9 @@ const GUIDE = (() => {
         {tag: 'Marksman', en: 'low health, out of position', fr: 'peu de PV, mal placés'}],
       weak: [{tag: 'Tank', en: 'too much health and armor to burst', fr: 'trop de PV et d\'armure pour les tuer d\'un coup'},
         {tag: 'Fighter', en: 'survive the burst and hit back', fr: 'survivent à l\'explosion et répliquent'}]},
-    {tag: 'Marksman', keyStats: {ad: 2, as: 2, crit: 3, armorPenPct: 1},
+    {tag: 'Marksman', runes: {keystone: 'Lethal Tempo', primary: ['Presence of Mind', 'Legend: Alacrity', 'Cut Down'], secondary: ['Magical Footwear', 'Biscuit Delivery'], shards: [5005, 5008, 5011],
+      why: {en: 'Lethal Tempo gives more attack speed with each basic attack during a fight: the longer you shoot, the faster you shoot.', fr: 'Tempo mortel donne plus de vitesse d\'attaque à chaque attaque de base pendant un combat : plus vous tirez, plus vous tirez vite.'}},
+      keyStats: {ad: 2, as: 2, crit: 3, armorPenPct: 1},
       what: {en: 'Marksmen deal steady damage with basic attacks from range. Weak early, they carry fights late in the game.',
         fr: 'Les tireurs infligent des dégâts réguliers avec leurs attaques de base à distance. Faibles au début, ils portent les combats en fin de partie.'},
       pros: [{en: 'The highest steady damage late in the game, from range.', fr: 'Les dégâts réguliers les plus élevés en fin de partie, à distance.'},
@@ -593,7 +604,9 @@ const GUIDE = (() => {
       strong: [{tag: 'Tank', en: 'steady damage that ignores much of their armor', fr: 'des dégâts réguliers qui ignorent une bonne part de leur armure'},
         {tag: 'Fighter', en: 'hit them from range as they walk up', fr: 'les touchent de loin pendant qu\'ils approchent'}],
       weak: [{tag: 'Assassin', en: 'burst before they can attack', fr: 'tués d\'un coup avant de pouvoir attaquer'}]},
-    {tag: 'Support', keyStats: {hsp: 3, ah: 2, mpRegenPct: 2, ap: 1},
+    {tag: 'Support', runes: {keystone: 'Summon Aery', primary: ['Manaflow Band', 'Transcendence', 'Scorch'], secondary: ['Font of Life', 'Revitalize'], shards: [5007, 5008, 5011],
+      why: {en: 'Summon Aery adds a shield when you help an ally and damage when you poke: it rewards everything a support does.', fr: 'Invocation d\'Aery ajoute un bouclier quand vous aidez un allié et des dégâts quand vous harcelez : elle récompense tout ce que fait un support.'}},
+      keyStats: {hsp: 3, ah: 2, mpRegenPct: 2, ap: 1},
       what: {en: 'Supports help their team more than they deal damage: heals, shields, crowd control and vision. Riot\'s Support class covers enchanters and catchers.',
         fr: 'Les supports aident leur équipe plus qu\'ils n\'infligent de dégâts : soins, boucliers, contrôles et vision. La classe Support de Riot couvre enchanteurs et attrapeurs.'},
       pros: [{en: 'Make their carries much stronger and harder to kill.', fr: 'Rendent leurs carrys bien plus forts et plus durs à tuer.'},
@@ -623,6 +636,8 @@ const GUIDE = (() => {
       def: {en: 'Jumping onto enemies behind their front line or under their tower to reach a fragile target.', fr: 'Sauter sur les ennemis derrière leur ligne de front ou sous leur tour pour atteindre une cible fragile.'}},
     {key: 'execute', term: {en: 'Execute', fr: 'Exécution'}, words: {en: ['execute', 'executes'], fr: ['exécute', 'exécution']},
       def: {en: 'Damage that grows with the target\'s missing health, or kills outright below a threshold.', fr: 'Des dégâts qui grandissent avec les PV manquants de la cible, ou qui tuent net sous un seuil.'}},
+    {key: 'keystone', term: {en: 'Keystone', fr: 'Rune principale (keystone)'}, words: {en: ['keystone', 'keystones'], fr: ['rune principale', 'runes principales']},
+      def: {en: 'The big rune at the top of your main tree. It shapes how you play more than any other rune; you pick one.', fr: 'La grande rune en haut de votre arbre principal. Elle change votre façon de jouer plus que toute autre rune ; vous en choisissez une.'}},
     {key: 'kite', term: {en: 'Kite', fr: 'Kiter'}, words: {en: ['kite', 'kited'], fr: ['tenir à distance']}, see: 'range',
       def: {en: 'Attacking while walking away so a melee enemy can never reach you.', fr: 'Attaquer en reculant pour qu\'un ennemi de mêlée ne vous atteigne jamais.'}},
     {key: 'onhit', term: {en: 'On-hit', fr: 'À l\'impact (on-hit)'}, words: {en: ['on-hit'], fr: ['à l\'impact']}, see: 'as',
@@ -633,6 +648,10 @@ const GUIDE = (() => {
       def: {en: 'Chipping at enemies from long range before a fight, so they start it with less health.', fr: 'Grignoter les ennemis de loin avant un combat pour qu\'ils l\'engagent avec moins de PV.'}},
     {key: 'ratio', term: {en: 'Ratio (scaling)', fr: 'Ratio'}, words: {en: ['ratio'], fr: ['ratio']}, see: 'ap',
       def: {en: 'The share of a stat an ability adds to its damage: a 60% AP ratio adds 60 damage per 100 AP. The Champions tab shows them.', fr: 'La part d\'une stat qu\'un sort ajoute à ses dégâts : un ratio de 60 % d\'AP ajoute 60 dégâts pour 100 d\'AP. L\'onglet Champions les montre.'}},
+    {key: 'runepage', term: {en: 'Rune page', fr: 'Page de runes'}, words: {en: ['rune page', 'rune pages'], fr: ['page de runes', 'pages de runes']},
+      def: {en: 'The runes you pick before the game: a keystone and three runes from a main tree, two runes from a second tree, and three stat shards. The Runes tab explains each one.', fr: 'Les runes choisies avant la partie : une rune principale et trois runes d\'un arbre principal, deux runes d\'un second arbre, et trois fragments de stats. L\'onglet Runes les explique.'}},
+    {key: 'shards', term: {en: 'Stat shards', fr: 'Fragments de stats'}, words: {en: ['stat shards', 'stat shard'], fr: ['fragments de stats', 'fragment de stats']},
+      def: {en: 'Three small bonuses at the bottom of a rune page (adaptive force, attack speed, health…), one per row.', fr: 'Trois petits bonus en bas d\'une page de runes (force adaptative, vitesse d\'attaque, PV…), un par ligne.'}},
     {key: 'skillshot', term: {en: 'Skillshot', fr: 'Skillshot'}, words: {en: ['skillshot'], fr: ['skillshot']},
       def: {en: 'An ability aimed at a place rather than a target: it can miss.', fr: 'Un sort visé vers un endroit plutôt qu\'une cible : il peut rater.'}},
     {key: 'snowball', term: {en: 'Snowball', fr: 'Effet boule de neige'}, words: {en: ['snowball'], fr: ['boule de neige']},
@@ -645,6 +664,20 @@ const GUIDE = (() => {
       def: {en: 'A short exchange of damage in lane. You win it if they lose more health than you.', fr: 'Un court échange de dégâts en voie. Vous le gagnez si l\'adversaire perd plus de PV que vous.'}},
   ];
 
+  // Runes tab: what each tree is for (Riot's files don't describe trees).
+  const TREES = {
+    8000: {en: 'Stronger basic attacks and long fights: attack speed, healing on takedowns, damage against tanks or low-health targets.',
+      fr: 'Des attaques de base plus fortes et des combats longs : vitesse d\'attaque, soins sur élimination, dégâts contre les tanks ou les cibles affaiblies.'},
+    8100: {en: 'Burst and hunting: quick extra damage on one target, and rewards for takedowns.',
+      fr: 'Explosion et chasse : des dégâts en plus, vite, sur une cible, et des récompenses pour les éliminations.'},
+    8200: {en: 'Abilities: extra spell damage, mana, ability haste and move speed.',
+      fr: 'Les sorts : des dégâts de sorts en plus, du mana, de l\'accélération de compétence et de la vitesse.'},
+    8400: {en: 'Staying alive: health, resistances, shields and healing for the front line.',
+      fr: 'Rester en vie : PV, résistances, boucliers et soins pour la ligne de front.'},
+    8300: {en: 'Tools that bend the rules: free boots, potions, haste and unusual effects.',
+      fr: 'Des outils qui contournent les règles : bottes gratuites, potions, accélération et effets inhabituels.'},
+  };
+
   // Beginner build starters (Engine.beginnerBuild): lane = Doran's items ranked by the class profile;
   // jungle = a pet (tanks take Mosstomper); support = World Atlas.
   const STARTERS = {lane: ['1054', '1055', '1056', '1086', '1120'], jungle: {damage: '1101', tank: '1103'}, support: '3865'};
@@ -655,7 +688,7 @@ const GUIDE = (() => {
     heal: {en: 'Its healing is cut by Grievous Wounds:', fr: 'Ses soins sont réduits par les Blessures graves :', items: 'gw'},
   };
 
-  return {WIKI, EXAMPLES, GROUPS, SOURCES, ITEM_COUNTERS, CLASSES, STARTERS, GLOSSARY};
+  return {WIKI, EXAMPLES, GROUPS, SOURCES, ITEM_COUNTERS, CLASSES, STARTERS, GLOSSARY, TREES};
 })();
 
 if (typeof module === 'object') module.exports = GUIDE;

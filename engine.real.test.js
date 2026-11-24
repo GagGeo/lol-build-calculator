@@ -351,3 +351,15 @@ test('skill orders: hand-written ones are used by default, the rest are estimate
   const sel = {champ: 'Garen', level: 9, items: [], runes: null, stacked: false, stacks: 0};
   assert.equal(Engine.spellDamage(D, {...sel, stats: Engine.championStats(D, sel)}, {stats: Engine.championStats(D, sel), currentHp: 2000}, 'E').rank, 5);
 });
+
+test('class rune pages: every rune name exists and every page is complete and valid', () => {
+  const GUIDE = require('./guide.js');
+  for (const c of GUIDE.CLASSES) {
+    const p = Engine.runePageFrom(D, c.runes);
+    assert.ok(p.keystone && p.primary && p.secondary, c.tag);
+    assert.ok([...p.primaryRunes, ...p.secondaryRunes, ...p.shards].every(Boolean), `${c.tag}: every slot filled`);
+    assert.deepEqual(Engine.validateRunePage(D, p), [], c.tag);
+  }
+  for (const t of D.runes.trees) assert.ok(GUIDE.TREES[t.id], `tree ${t.id} described`);
+  for (const r of Object.values(D.runes.byId)) assert.ok(r.icon, `rune ${r.id} icon`);
+});

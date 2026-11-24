@@ -120,8 +120,8 @@ class BuildItems(unittest.TestCase):
         self.assertNotIn("possible stat passive: 3071", text)
 
 
-RR_EN = [{"id": 8100, "key": "Domination", "name": "Domination", "slots": [
-    {"runes": [{"id": 8112, "name": "Electrocute", "longDesc": "L", "shortDesc": "S"}]},
+RR_EN = [{"id": 8100, "key": "Domination", "name": "Domination", "icon": "perk-images/Styles/7200_Domination.png", "slots": [
+    {"runes": [{"id": 8112, "name": "Electrocute", "longDesc": "L", "shortDesc": "S", "icon": "perk-images/E.png"}]},
     {"runes": [{"id": 8126, "name": "Cheap Shot", "longDesc": "L2", "shortDesc": "S2"}]}]}]
 RR_FR = [{"id": 8100, "key": "Domination", "name": "Domination FR", "slots": [
     {"runes": [{"id": 8112, "name": "Électrocution", "longDesc": "LF", "shortDesc": "SF"}]},
@@ -133,9 +133,10 @@ class BuildRunes(unittest.TestCase):
         runes = build_runes(RR_EN, RR_FR)
         self.assertEqual(runes["trees"], [{"id": 8100, "key": "Domination",
                                            "name": {"en": "Domination", "fr": "Domination FR"},
-                                           "slots": [[8112], [8126]]}])
+                                           "icon": "perk-images/Styles/7200_Domination.png", "slots": [[8112], [8126]]}])
         self.assertEqual(runes["byId"]["8112"], {"id": 8112, "name": {"en": "Electrocute", "fr": "Électrocution"},
-                                                 "desc": {"en": "L", "fr": "LF"}, "tree": 8100, "row": 0})
+                                                 "desc": {"en": "L", "fr": "LF"}, "short": {"en": "S", "fr": "SF"},
+                                                 "icon": "perk-images/E.png", "tree": 8100, "row": 0})
         self.assertEqual(runes["byId"]["8126"]["row"], 1)
 
 

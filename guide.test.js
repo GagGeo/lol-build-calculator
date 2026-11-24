@@ -68,3 +68,13 @@ test('glossary: both languages, words to link, known cards', () => {
   }
   assert.equal(new Set(GUIDE.GLOSSARY.map((g) => g.key)).size, GUIDE.GLOSSARY.length);
 });
+
+test('class rune pages and tree texts: both languages', () => {
+  for (const c of GUIDE.CLASSES) {
+    both(c.runes.why, c.tag);
+    assert.equal(c.runes.primary.length, 3, c.tag);
+    assert.equal(c.runes.secondary.length, 2, c.tag);
+    assert.equal(c.runes.shards.length, 3, c.tag);
+  }
+  Object.entries(GUIDE.TREES).forEach(([id, x]) => both(x, id));
+});

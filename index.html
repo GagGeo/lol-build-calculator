@@ -84,6 +84,12 @@
   .card-head img { width: 56px; height: 56px; border-radius: 6px; border: 1px solid var(--gold); }
   .card-head img.champ { border-radius: 50%; border-width: 2px; }
   .card-head h3 { margin: 0; }
+  .card-head img.rune { border: 0; background: var(--deep); border-radius: 50%; }
+  .card-head.small img { width: 40px; height: 40px; }
+  .card-head h4 { margin: 0 !important; }
+  img.icon.rune { border: 0; border-radius: 50%; background: var(--deep); }
+  .rune-row { color: var(--muted); margin: 0; }
+  .nowrap { white-space: nowrap; }
   .details-toggle { margin-bottom: 8px; }
   .opt-items { list-style: none; padding: 0; margin: 8px 0; display: grid; gap: 4px; }
   .opt-items li { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
@@ -204,6 +210,7 @@
     <button type="button" role="tab" id="tab-champions" aria-controls="champions"></button>
     <button type="button" role="tab" id="tab-classes" aria-controls="classes"></button>
     <button type="button" role="tab" id="tab-items" aria-controls="items"></button>
+    <button type="button" role="tab" id="tab-runes" aria-controls="runes"></button>
     <button type="button" role="tab" id="tab-guide" aria-controls="guide"></button>
     <button type="button" role="tab" id="tab-glossary" aria-controls="glossary"></button>
   </div>
@@ -216,6 +223,7 @@
   <section id="rankings" class="panel" role="tabpanel" aria-labelledby="tab-rankings" hidden></section>
   <section id="optimize" class="panel" role="tabpanel" aria-labelledby="tab-optimize" hidden></section>
   <section id="items" class="panel" role="tabpanel" aria-labelledby="tab-items" hidden></section>
+  <section id="runes" class="panel" role="tabpanel" aria-labelledby="tab-runes" hidden></section>
   <section id="champions" class="panel" role="tabpanel" aria-labelledby="tab-champions" hidden></section>
   <section id="classes" class="panel" role="tabpanel" aria-labelledby="tab-classes" hidden></section>
   <section id="guide" class="panel" role="tabpanel" aria-labelledby="tab-guide" hidden></section>
@@ -226,10 +234,10 @@
   <p data-t="disclaimer"></p>
   <button type="button" id="tab-sources" aria-controls="sources"></button>
 </footer>
-<script src="data.js?v=b9aeecfe89"></script>
-<script src="engine.js?v=863bc2b969"></script>
-<script src="guide.js?v=8d7fca2d3f"></script>
-<script src="i18n.js?v=065add1598"></script>
-<script src="app.js?v=8ff893be4b"></script>
+<script src="data.js?v=addc451268"></script>
+<script src="engine.js?v=f899586ef7"></script>
+<script src="guide.js?v=b3e03be105"></script>
+<script src="i18n.js?v=fb1e13023f"></script>
+<script src="app.js?v=03b264405c"></script>
 </body>
 </html>

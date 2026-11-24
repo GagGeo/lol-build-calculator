@@ -27,6 +27,10 @@ const el = (tag, attrs = {}, ...children) => {
 const IMG = `https://ddragon.leagueoflegends.com/cdn/${DATA.patch}/img/`;
 const itemIcon = (id) => `${IMG}item/${id}.png`;
 const champIcon = (id) => `${IMG}champion/${id}.png`;
+const runeIcon = (path) => `https://ddragon.leagueoflegends.com/cdn/img/${path}`; // rune pictures are not per patch
+const SHARD_ICONS = {5008: 'AdaptiveForce', 5005: 'AttackSpeed', 5007: 'CDRScaling', 5010: 'MovementSpeed',
+  5001: 'HealthScaling', 5011: 'HealthPlus', 5013: 'Tenacity'};
+const shardIcon = (id) => runeIcon(`perk-images/StatMods/StatMods${SHARD_ICONS[id]}Icon.png`);
 const icon = (src, cls = '') => {
   const img = el('img', {src, alt: '', class: ('icon ' + cls).trim(), loading: 'lazy'});
   img.addEventListener('error', () => { img.hidden = true; });
@@ -214,7 +218,9 @@ function createPanel(container, side, onChange) {
       el('div', {}, label('secondary', side + '-secondary'), ui.secondary,
         ...ui.secondaryRunes.flatMap((s) => [el('label', {}, ''), s]),
         label('shards', ''), ...ui.shards)),
-    el('label', {class: 'check'}, ui.stacked, el('span', {'data-k': 'stacked'})));
+    el('label', {class: 'check'}, ui.stacked, el('span', {'data-k': 'stacked'})),
+    ...(typeof GUIDE === 'object' ? [el('div', {class: 'row combo-add'}, ui.usualRunes = el('button', {type: 'button'}))] : []));
+  if (ui.usualRunes) ui.usualRunes.addEventListener('click', () => { state.runes = usualRunes(state.champ).page; render(); });
   const optionsBox = el('details', {class: 'setup'}, el('summary', {}, el('span', {'data-k': 'setupOptions'}), ui.optionsValue),
     label('skillOrder', side + '-priority'), ui.priority, ui.priorityNote,
     label('currentHp', side + '-hp'), ui.hp, stacksWrap);
@@ -384,8 +390,9 @@ function createPanel(container, side, onChange) {
     });
     ui.portrait.src = champIcon(state.champ);
     ui.champTitle.textContent = nm(DATA.champions[state.champ].title);
-    const keystone = state.runes.keystone ? runeName(state.runes.keystone) : '';
-    ui.runesValue.textContent = keystone;
+    const ks = state.runes.keystone && DATA.runes.byId[state.runes.keystone];
+    ui.runesValue.replaceChildren(...(ks ? [icon(runeIcon(ks.icon), 'rune'), nm(ks.name)] : []));
+    if (ui.usualRunes) ui.usualRunes.textContent = t('runesUsual', {tag: t('tag_' + usualRunes(state.champ).tag)});
     ui.optionsValue.textContent = state.priority.join(' > ');
 
     const cost = Engine.buildCost(DATA, state.items);
@@ -411,6 +418,7 @@ function createPanel(container, side, onChange) {
   render();
   return {getSelection: () => ({...state, items: state.items.slice(), buffs: {...state.buffs}, combo: state.combo.map((s) => ({...s}))}),
           setLang: render, results: ui.results, section, setChamp: chooseChamp,
+          setRunes: (page) => { state.runes = Engine.normalizeRunePage(DATA, JSON.parse(JSON.stringify(page))); render(); },
           setItems: (items, gold) => { state.items = items.slice(); if (gold !== undefined) state.gold = gold; removedNotice = ''; render(); },
           // Load a whole build (from the rankings); rows are already legal for their champion.
           setBuild: (b) => {
@@ -951,6 +959,77 @@ function createItemsTab(section) {
 }
 let itemsTab = null;
 
+// "Runes" tab: one sub tab per tree, a card per rune (what it does, what the calculator counts, which class pages
+// use it), and a sub tab for the stat shards.
+function createRunesTab(section) {
+  const trees = DATA.runes.trees;
+  let current = 0;
+  const strip = (html) => html.replace(/<br\s*\/?>/g, ' ').replace(/<[^>]+>/g, '').replace(/\s+/g, ' ').trim();
+  const rules = DATA.rules;
+  const counted = (id) => {
+    const stats = [...new Set((rules.runeStats[id] || []).map((e) => (e.op === 'jack' ? 'ah' : e.stat)).filter(Boolean))];
+    if (stats.length) return t('runeCountStats', {stats: stats.map((k) => t('stat_' + k)).join(', ')});
+    if ((rules.runeDamageUnknown || []).includes(String(id)) || (rules.runeDamageUnknown || []).includes(id)) return t('runeCountUnknown');
+    if ((rules.runeDamage || {})[id]) return t('runeCountDamage');
+    return t('runeCountNone');
+  };
+  const usedBy = (id) => (typeof GUIDE === 'object' ? GUIDE.CLASSES : []).filter((c) => {
+    const p = Engine.runePageFrom(DATA, c.runes);
+    return [p.keystone, ...p.primaryRunes, ...p.secondaryRunes].includes(id);
+  });
+  function runeCard(id) {
+    const r = DATA.runes.byId[id];
+    const classes = usedBy(id);
+    const full = el('details', {}, el('summary', {text: t('runeFull')}), el('p', {text: strip(nm(r.desc))}));
+    return el('article', {class: 'item-card', id: 'rune-' + id, tabindex: -1},
+      el('div', {class: 'card-head small'}, ...(r.icon ? [icon(runeIcon(r.icon), 'rune')] : []),
+        el('div', {}, el('h4', {text: nm(r.name)}), el('p', {class: 'rune-row', text: r.row ? t('runeRow', {n: r.row}) : t('runeKeystone')}))),
+      el('p', {}, ...glossaryNodes(strip(nm(r.short) || nm(r.desc)))), full,
+      el('p', {class: 'note', text: counted(id)}),
+      ...(classes.length ? [el('p', {class: 'note'}, t('runeUsedBy') + ' ',
+        ...classes.flatMap((c, i) => [...(i ? [', '] : []), linkButton(t('tag_' + c.tag), () => classesTab && classesTab.open(c.tag))]))] : []));
+  }
+  function shardsView() {
+    return el('div', {}, el('p', {}, ...glossaryNodes(t('shardsIntro'))),
+      el('div', {class: 'guide-cards'}, ...rules.shardRows.map((row, i) => el('article', {class: 'item-card'},
+        el('h4', {text: t(['offense', 'flex', 'defense'][i])}),
+        el('ul', {class: 'opt-items'}, ...row.map((id) => el('li', {}, icon(shardIcon(id), 'rune'), shardLabel(id))))))));
+  }
+  function render() {
+    const names = [...trees.map((x) => nm(x.name)), t('shardsTitle')];
+    const tabs = names.map((name, i) => {
+      const b = el('button', {type: 'button', role: 'tab', id: 'rune-tab-' + i, 'aria-controls': 'rune-cards',
+        'aria-selected': String(i === current), tabindex: i === current ? 0 : -1, text: name});
+      if (trees[i] && trees[i].icon) b.prepend(icon(runeIcon(trees[i].icon), 'rune'));
+      b.addEventListener('click', () => { current = i; render(); });
+      b.addEventListener('keydown', (e) => {
+        if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') {
+          current = (i + (e.key === 'ArrowRight' ? 1 : names.length - 1)) % names.length;
+          render();
+          section.querySelector('#rune-tab-' + current).focus();
+        }
+      });
+      return b;
+    });
+    const tree = trees[current];
+    const body = tree ? [el('p', {text: typeof GUIDE === 'object' ? pick(GUIDE.TREES[tree.id] || {en: ''}) : ''}),
+      el('div', {class: 'guide-cards'}, ...tree.slots.flat().map(runeCard))] : [shardsView()];
+    section.replaceChildren(el('h2', {text: t('tabRunes')}), el('p', {}, ...glossaryNodes(t('runesIntro'))),
+      el('div', {class: 'subtabs', role: 'tablist', 'aria-label': t('tabRunes')}, ...tabs),
+      el('div', {id: 'rune-cards', role: 'tabpanel', 'aria-labelledby': 'rune-tab-' + current}, ...body));
+  }
+  function open(id) {
+    current = trees.findIndex((x) => x.id === DATA.runes.byId[id].tree);
+    showTab('runes');
+    render();
+    const card = section.querySelector('#rune-' + id);
+    if (card) { card.scrollIntoView({behavior: 'smooth', block: 'start'}); card.focus({preventScroll: true}); }
+  }
+  render();
+  return {setLang: render, open};
+}
+let runesTab = null;
+
 // "Champions" tab: usual roles (Meraki, see prep.py), Riot's classes, and what each kit scales with
 // (Engine.kitScaling, measured with the calculator's own damage). A card on top for the champion picked.
 const scaling = new Map(); // champion id -> Engine.kitScaling result (the data never changes on the page)
@@ -981,6 +1060,7 @@ function createChampionsTab(section) {
     load.addEventListener('click', () => {
       panels[0].setChamp(id);
       panels[0].setItems([b.boots, ...b.core, null, null, null, null, null, null].slice(0, 6));
+      panels[0].setRunes(usualRunes(id).page);
       showTab('calculator');
       panels[0].section.scrollIntoView();
     });
@@ -1034,7 +1114,13 @@ function createChampionsTab(section) {
       + (order.estimated ? ' ' + t('skillOrderEstimatedShort') : '')));
     // Sections are blocks so the two-column layout never splits one (index.html).
     parts.splice(1, parts.length - 1, el('div', {class: 'block'}, ...parts.slice(1)));
-    if (typeof GUIDE === 'object') parts.push(el('div', {class: 'block'}, ...beginnerBuild(selected)), el('div', {class: 'block'}, ...abilities(selected)));
+    if (typeof GUIDE === 'object') {
+      const runes = usualRunes(selected);
+      parts.push(el('div', {class: 'block'}, ...beginnerBuild(selected)),
+        el('div', {class: 'block'}, el('h4', {text: t('runePage')}), runePageNodes(runes.page),
+          el('p', {class: 'note', text: pick(runes.why) + ' ' + t('runePageFrom', {tag: t('tag_' + runes.tag)})})),
+        el('div', {class: 'block'}, ...abilities(selected)));
+    }
     const openAs = (idx, who) => {
       const b = el('button', {type: 'button', text: t('openAs', {who: t(who)})});
       b.addEventListener('click', () => {
@@ -1128,6 +1214,7 @@ function createClassesTab(section) {
       label(t('classStrong')), vs(c.strong), label(t('classWeak')), vs(c.weak),
       label(t('classKeyStats')), el('p', {}, ...Object.keys(c.keyStats).flatMap((k, i) => [...(i ? [', '] : []),
         CARDS[k] ? linkButton(cardTitle(k), () => guideTab && guideTab.open(k)) : t('stat_' + k)])),
+      label(t('runePage')), runePageNodes(Engine.runePageFrom(DATA, c.runes)), el('p', {class: 'note', text: pick(c.runes.why)}),
       label(t('classItems')), el('ul', {}, ...picks.items.map(itemLine)),
       ...(picks.boots ? [el('p', {}, t('classBoots') + ' ', itemButton(picks.boots))] : []),
       label(t('classChamps')), el('ol', {}, ...ranked.slice(0, 8).map((id) => el('li', {}, champLink(id), ' ' +
@@ -1152,7 +1239,7 @@ function createClassesTab(section) {
       el('div', {id: 'class-card', role: 'tabpanel', 'aria-labelledby': 'class-tab-' + current}, card(GUIDE.CLASSES[current])));
   }
   render();
-  return {setLang: render};
+  return {setLang: render, open: (tag) => { showTab('classes'); select(Math.max(0, GUIDE.CLASSES.findIndex((c) => c.tag === tag))); }};
 }
 let classesTab = null;
 
@@ -1175,6 +1262,28 @@ const itemButton = (id) => {
   b.prepend(icon(itemIcon(id)));
   return b;
 };
+const runeButton = (id) => {
+  const r = DATA.runes.byId[id];
+  const b = linkButton(nm(r.name), () => runesTab && runesTab.open(id));
+  if (r.icon) b.prepend(icon(runeIcon(r.icon), 'rune'));
+  return b;
+};
+// A rune page as a short list: keystone, main tree runes, second tree runes, stat shards.
+function runePageNodes(page) {
+  const tree = (id) => nm(DATA.runes.trees.find((x) => x.id === id).name);
+  const join = (ids) => ids.filter(Boolean).flatMap((id, i) => [...(i ? [', '] : []), runeButton(id)]);
+  return el('ul', {},
+    ...(page.keystone ? [el('li', {}, t('runePageKeystone') + ' ', runeButton(page.keystone))] : []),
+    ...(page.primary ? [el('li', {}, t('runePageMain', {tree: tree(page.primary)}) + ' ', ...join(page.primaryRunes))] : []),
+    ...(page.secondary ? [el('li', {}, t('runePageSecond', {tree: tree(page.secondary)}) + ' ', ...join(page.secondaryRunes))] : []),
+    el('li', {}, t('runePageShards') + ' ' + page.shards.filter(Boolean).map(shardLabel).join(', ')));
+}
+// The usual rune page for a champion: the page of the class its beginner build uses.
+const usualRunes = (champId) => {
+  const tag = Engine.beginnerBuild(DATA, champId, GUIDE.CLASSES, GUIDE.STARTERS).profile;
+  const c = GUIDE.CLASSES.find((x) => x.tag === tag);
+  return {tag, why: c.runes.why, page: Engine.runePageFrom(DATA, c.runes)};
+};
 const champButton = (id, action) => {
   const b = linkButton(nm(DATA.champions[id].name), action);
   b.prepend(icon(champIcon(id), 'champ'));
@@ -1194,8 +1303,11 @@ function glossaryNodes(text) {
   const out = [];
   let last = 0;
   for (const m of text.matchAll(re)) {
-    out.push(text.slice(last, m.index), linkButton(m[0], () => glossaryTab && glossaryTab.open(map.get(m[0].toLowerCase()))));
-    last = m.index + m[0].length;
+    if (m.index < last) continue; // inside punctuation already taken
+    const link = linkButton(m[0], () => glossaryTab && glossaryTab.open(map.get(m[0].toLowerCase())));
+    const end = m.index + m[0].length, punct = (text.slice(end).match(/^[,.;:!?)]+/) || [''])[0];
+    out.push(text.slice(last, m.index), punct ? el('span', {class: 'nowrap'}, link, punct) : link); // "stacks," stays on one line
+    last = end + punct.length;
   }
   out.push(text.slice(last));
   return out.filter((x) => x !== '');
@@ -1337,7 +1449,7 @@ let sourcesTab = null;
 
 // Tabs: the calculator (panels + advisor), the rankings and the champion optimizer. The choice is remembered.
 // Only tabs present in the page: a cached older index.html next to a newer app.js must not break the page.
-const TABS = ['calculator', 'rankings', 'optimize', 'champions', 'classes', 'items', 'guide', 'glossary', 'sources'].filter((id) => document.getElementById(id) && document.getElementById('tab-' + id));
+const TABS = ['calculator', 'rankings', 'optimize', 'champions', 'classes', 'items', 'runes', 'guide', 'glossary', 'sources'].filter((id) => document.getElementById(id) && document.getElementById('tab-' + id));
 function showTab(name) {
   for (const [tab, panel] of TABS.map((x) => [x, x])) {
     const selected = tab === name;
@@ -1404,6 +1516,7 @@ function renderPage() {
   if (optimizer) optimizer.setLang();
   if (itemsTab) itemsTab.setLang();
   if (championsTab) championsTab.setLang();
+  if (runesTab) runesTab.setLang();
   if (classesTab) classesTab.setLang();
   if (guideTab) guideTab.setLang();
   if (glossaryTab) glossaryTab.setLang();
@@ -1412,6 +1525,7 @@ function renderPage() {
   document.getElementById('tab-rankings').textContent = t('tabRankings');
   if (optimizer) document.getElementById('tab-optimize').textContent = t('tabOptimize');
   if (itemsTab) document.getElementById('tab-items').textContent = t('tabItems');
+  if (runesTab) document.getElementById('tab-runes').textContent = t('tabRunes');
   if (championsTab) document.getElementById('tab-champions').textContent = t('tabChampions');
   if (classesTab) document.getElementById('tab-classes').textContent = t('tabClasses');
   if (guideTab) document.getElementById('tab-guide').textContent = t('tabGuide');
@@ -1439,6 +1553,7 @@ setEnemyShown(enemyShown);
 rankings = createRankings(document.getElementById('rankings'));
 if (TABS.includes('optimize')) optimizer = createOptimizer(document.getElementById('optimize'));
 if (TABS.includes('items')) itemsTab = createItemsTab(document.getElementById('items'));
+if (TABS.includes('runes')) runesTab = createRunesTab(document.getElementById('runes'));
 if (TABS.includes('champions')) championsTab = createChampionsTab(document.getElementById('champions'));
 if (TABS.includes('classes') && typeof GUIDE === 'object') classesTab = createClassesTab(document.getElementById('classes'));
 if (TABS.includes('guide') && typeof GUIDE === 'object') guideTab = createGuideTab(document.getElementById('guide'));

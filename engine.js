@@ -1161,6 +1161,16 @@ const Engine = (() => {
     });
   }
 
+  // A rune page from rune names (guide.js CLASSES runes): {keystone, primary: [3 names], secondary: [2 names], shards}.
+  // Trees come from the runes themselves; the page is normalized like one picked by hand. Unknown names are left empty.
+  function runePageFrom(data, spec) {
+    const byName = (name) => Object.values(data.runes.byId).find((r) => r.name.en === name);
+    const key = byName(spec.keystone), second = spec.secondary.map(byName);
+    return normalizeRunePage(data, {primary: key ? key.tree : null, keystone: key ? key.id : null,
+      primaryRunes: spec.primary.map((n) => (byName(n) || {}).id ?? null),
+      secondary: second[0] ? second[0].tree : null, secondaryRunes: second.map((r) => (r ? r.id : null)), shards: spec.shards});
+  }
+
   // The order to buy an item from scratch: each part's own recipe first (most expensive part first), then combine.
   function buildPath(data, id) {
     const steps = [];
@@ -1191,7 +1201,7 @@ const Engine = (() => {
 
   return {RANKABLE_STATS, bestBuilds, bestRunePage, rankStat, optimizeChampion, statBreakdown, statGoldPrices, goldEfficiency, adviseBuys, rankBuys, purchase, growth, capMoveSpeed, clampLevel, championStats, ultRank, skillOrder, validateBuild, allowedItems, pruneBuild,
           validateRunePage, normalizeRunePage, buildCost, goldWarning, evalCalc, skillRanks,
-          mitigate, autoAttack, spellDamage, runCombo, counterAdvice, kitScaling, classItems, beginnerBuild, spellScaling, matchupByLevel, buildPath, DEFAULT_COMBO, defaultCombo, clampPct, spellHeal};
+          mitigate, autoAttack, spellDamage, runCombo, counterAdvice, kitScaling, classItems, beginnerBuild, spellScaling, matchupByLevel, buildPath, runePageFrom, DEFAULT_COMBO, defaultCombo, clampPct, spellHeal};
 })();
 
 if (typeof module === 'object') module.exports = Engine;
