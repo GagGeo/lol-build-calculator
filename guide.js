@@ -288,6 +288,7 @@ const GUIDE = (() => {
   };
 
   // Stat cards by group. "with": how the stat works with others. "wiki": page on the LoL Wiki.
+  // "counter": what beats it; "items": item ids (or 'gw': the Grievous Wounds items), "see": other cards.
   const GROUPS = [
     {en: 'Basic attacks', fr: 'Attaques de base', stats: [
       {key: 'ad', wiki: 'Attack_damage', example: 'as',
@@ -297,28 +298,35 @@ const GUIDE = (() => {
           {en: 'Attack speed: more attacks per second, each one dealing your AD.', fr: 'Vitesse d\'attaque : plus d\'attaques par seconde, chacune infligeant votre AD.'},
           {en: 'Critical strikes multiply it.', fr: 'Les coups critiques la multiplient.'},
           {en: 'It is physical damage: the enemy\'s armor reduces it.', fr: 'Ce sont des dégâts physiques : l\'armure adverse les réduit.'},
-        ]},
+        ],
+        counter: [{en: 'Armor: it reduces physical damage.', fr: 'L\'armure : elle réduit les dégâts physiques.', see: ['armor']}]},
       {key: 'as', wiki: 'Attack_speed', example: 'as',
         what: {en: 'How many basic attacks you make per second. Bonus attack speed is a percentage of your champion\'s own attack speed, and it is capped at 2.5 attacks per second for most champions.',
           fr: 'Le nombre d\'attaques de base par seconde. La vitesse d\'attaque en plus est un pourcentage de celle de votre champion, plafonnée à 2,5 attaques par seconde pour la plupart des champions.'},
         with: [
           {en: 'Attack damage and critical strikes: each extra attack deals them again.', fr: 'Dégâts d\'attaque et coups critiques : chaque attaque en plus les inflige à nouveau.'},
           {en: 'On-hit effects and life steal trigger on every attack.', fr: 'Les effets à l\'impact et le vol de vie se déclenchent à chaque attaque.'},
-        ]},
+        ],
+        counter: [{en: 'Lower their attack speed by 20%:', fr: 'Réduire leur vitesse d\'attaque de 20 % :', items: ['3110']},
+          {en: 'Take 10% less damage from basic attacks:', fr: 'Subir 10 % de dégâts en moins des attaques de base :', items: ['3047']}]},
       {key: 'crit', wiki: 'Critical_strike', example: 'crit',
         what: {en: 'The chance for a basic attack to be a critical strike, which deals 175% damage. Capped at 100%. Most abilities can\'t crit.',
           fr: 'La chance qu\'une attaque de base soit un coup critique, qui inflige 175 % des dégâts. Plafonnée à 100 %. La plupart des sorts ne peuvent pas faire de critique.'},
         with: [
           {en: 'Critical damage makes each crit bigger, but only matters if you have crit chance.', fr: 'Les dégâts critiques rendent chaque critique plus fort, mais ne comptent que si vous avez des chances de critique.'},
           {en: 'Attack damage: a crit multiplies it.', fr: 'Dégâts d\'attaque : un critique les multiplie.'},
-        ]},
+        ],
+        counter: [{en: 'Take 30% less damage from critical strikes:', fr: 'Subir 30 % de dégâts en moins des coups critiques :', items: ['3143']},
+          {en: 'Armor: crits are physical damage.', fr: 'L\'armure : les critiques sont des dégâts physiques.', see: ['armor']}]},
       {key: 'critDmg', wiki: 'Critical_strike', example: 'crit',
         what: {en: 'Raises the damage of your critical strikes above 175%.', fr: 'Augmente les dégâts de vos coups critiques au-delà de 175 %.'},
-        with: [{en: 'Useless without critical strike chance (see the example).', fr: 'Inutile sans chances de coup critique (voir l\'exemple).'}]},
+        with: [{en: 'Useless without critical strike chance (see the example).', fr: 'Inutile sans chances de coup critique (voir l\'exemple).'}],
+        counter: [{en: 'Take 30% less damage from critical strikes:', fr: 'Subir 30 % de dégâts en moins des coups critiques :', items: ['3143']}]},
       {key: 'range', wiki: 'Range',
         what: {en: 'How far away your basic attacks reach. Ranged champions can hit from a distance; melee champions must stay close.',
           fr: 'La distance à laquelle portent vos attaques de base. Les champions à distance frappent de loin ; ceux de mêlée doivent rester au contact.'},
-        with: [{en: 'Move speed: helps you stay at the right distance.', fr: 'Vitesse de déplacement : aide à rester à la bonne distance.'}]},
+        with: [{en: 'Move speed: helps you stay at the right distance.', fr: 'Vitesse de déplacement : aide à rester à la bonne distance.'}],
+        counter: [{en: 'Move speed and slows: reach them, or keep them from walking away.', fr: 'Vitesse de déplacement et ralentissements : les rattraper, ou les empêcher de reculer.', see: ['ms']}]},
     ]},
     {en: 'Abilities', fr: 'Sorts', stats: [
       {key: 'ap', wiki: 'Ability_power', example: 'ap',
@@ -328,7 +336,9 @@ const GUIDE = (() => {
           {en: 'Most AP damage is magic damage: the enemy\'s magic resist reduces it.', fr: 'La plupart des dégâts AP sont magiques : la résistance magique adverse les réduit.'},
           {en: 'Ability haste: more casts, so more of that damage.', fr: 'Accélération de compétence : plus de lancers, donc plus de ces dégâts.'},
           {en: 'It does nothing for champions whose abilities don\'t scale with AP.', fr: 'Elle ne sert à rien aux champions dont les sorts n\'en dépendent pas.'},
-        ]},
+        ],
+        counter: [{en: 'Magic resist: it reduces magic damage.', fr: 'La résistance magique : elle réduit les dégâts magiques.', see: ['mr']},
+          {en: 'Spell shields and magic shields:', fr: 'Boucliers anti-sort et anti-magie :', items: ['3102', '3156', '2504']}]},
       {key: 'ah', wiki: 'Ability_haste', example: 'ah',
         what: {en: 'Shortens your ability cooldowns. 100 ability haste halves them, so you cast twice as often.',
           fr: 'Réduit le délai de récupération de vos sorts. 100 d\'accélération le divisent par deux : vous lancez deux fois plus souvent.'},
@@ -355,25 +365,31 @@ const GUIDE = (() => {
         with: [
           {en: 'Best against low-armor targets (mages, marksmen).', fr: 'Idéale contre les cibles à peu d\'armure (mages, tireurs).'},
           {en: 'Applied after armor penetration %. It can\'t bring armor below 0.', fr: 'Appliquée après la pénétration d\'armure %. Elle ne descend pas l\'armure sous 0.'},
-        ]},
+        ],
+        counter: [{en: 'Building armor: a fixed amount ignored matters less when there is more armor.', fr: 'Acheter de l\'armure : une quantité fixe ignorée compte moins quand il y en a plus.', see: ['armor']},
+          {en: 'Health: lethality does nothing to it.', fr: 'Les PV : la létalité n\'y change rien.', see: ['hp']}]},
       {key: 'armorPenPct', wiki: 'Armor_penetration', example: 'armor',
         what: {en: 'Ignores a percentage of the enemy\'s armor. The more armor they have, the more it removes.',
           fr: 'Ignore un pourcentage de l\'armure adverse. Plus l\'adversaire en a, plus elle en retire.'},
         with: [
           {en: 'Best against tanks.', fr: 'Idéale contre les tanks.'},
           {en: 'Applied before lethality.', fr: 'Appliquée avant la létalité.'},
-        ]},
+        ],
+        counter: [{en: 'Health: penetration does nothing to it.', fr: 'Les PV : la pénétration n\'y change rien.', see: ['hp']}]},
       {key: 'magicPen', wiki: 'Magic_penetration', example: 'mr',
         what: {en: 'Ignores a fixed amount of the enemy\'s magic resist, like lethality does for armor.',
           fr: 'Ignore une quantité fixe de la résistance magique adverse, comme la létalité pour l\'armure.'},
         with: [
           {en: 'Best against low magic resist targets. Applied after magic penetration %.', fr: 'Idéale contre les cibles à peu de résistance magique. Appliquée après la pénétration magique %.'},
-        ]},
+        ],
+        counter: [{en: 'Building magic resist: a fixed amount ignored matters less when there is more of it.', fr: 'Acheter de la résistance magique : une quantité fixe ignorée compte moins quand il y en a plus.', see: ['mr']},
+          {en: 'Health: penetration does nothing to it.', fr: 'Les PV : la pénétration n\'y change rien.', see: ['hp']}]},
       {key: 'magicPenPct', wiki: 'Magic_penetration', example: 'mr',
         what: {en: 'Ignores a percentage of the enemy\'s magic resist.', fr: 'Ignore un pourcentage de la résistance magique adverse.'},
         with: [
           {en: 'Best against tanks. Applied before flat magic penetration.', fr: 'Idéale contre les tanks. Appliquée avant la pénétration magique fixe.'},
-        ]},
+        ],
+        counter: [{en: 'Health: penetration does nothing to it.', fr: 'Les PV : la pénétration n\'y change rien.', see: ['hp']}]},
     ]},
     {en: 'Defense', fr: 'Défense', stats: [
       {key: 'hp', wiki: 'Health', example: 'ehp',
@@ -384,7 +400,8 @@ const GUIDE = (() => {
           {en: 'Health and armor help each other, so buying some of both is better than only one.',
             fr: 'PV et armure se renforcent l\'un l\'autre : en acheter un peu des deux vaut mieux qu\'un seul.'},
           {en: 'Damage based on maximum health hurts high-health champions more.', fr: 'Les dégâts en % des PV max font plus mal aux champions à beaucoup de PV.'},
-        ]},
+        ],
+        counter: [{en: 'Damage based on the target\'s health:', fr: 'Les dégâts selon les PV de la cible :', items: ['3153', '6653'], see: ['damageTypes']}]},
       {key: 'armor', wiki: 'Armor', example: 'armor',
         what: {en: 'Reduces the physical damage you take: basic attacks and most AD abilities. 100 armor means you take half the damage.',
           fr: 'Réduit les dégâts physiques subis : attaques de base et la plupart des sorts AD. 100 d\'armure, et vous subissez moitié moins.'},
@@ -394,25 +411,31 @@ const GUIDE = (() => {
           {en: 'Each point adds the same: 1% of your health against physical damage.', fr: 'Chaque point ajoute autant : 1 % de vos PV face aux dégâts physiques.'},
           {en: 'Armor can go below 0 (some abilities remove a fixed amount): the target then takes more than full damage, 17% more at -20 armor.',
             fr: 'L\'armure peut passer sous 0 (certains sorts en retirent une quantité fixe) : la cible subit alors plus que les dégâts entiers, 17 % de plus à -20 d\'armure.'},
-        ]},
+        ],
+        counter: [{en: 'Lethality, armor penetration % and armor shred.', fr: 'La létalité, la pénétration d\'armure % et la réduction d\'armure.', see: ['lethality', 'armorPenPct', 'shred']},
+          {en: 'Magic and true damage: armor does nothing against them.', fr: 'Les dégâts magiques et bruts : l\'armure n\'y peut rien.'}]},
       {key: 'mr', wiki: 'Magic_resistance', example: 'mr',
         what: {en: 'Like armor, against magic damage: most AP abilities. 100 magic resist means you take half the damage.',
           fr: 'Comme l\'armure, contre les dégâts magiques : la plupart des sorts AP. 100 de résistance, et vous subissez moitié moins.'},
         with: [
           {en: 'Health: magic resist multiplies it, like armor does.', fr: 'PV : la résistance magique les multiplie, comme l\'armure.'},
           {en: 'The attacker\'s magic penetration % then flat magic penetration reduce it.', fr: 'La pénétration magique % puis fixe de l\'attaquant la réduisent.'},
-        ]},
+        ],
+        counter: [{en: 'Flat and % magic penetration.', fr: 'La pénétration magique fixe et %.', see: ['magicPen', 'magicPenPct']},
+          {en: 'Physical and true damage: magic resist does nothing against them.', fr: 'Les dégâts physiques et bruts : la résistance magique n\'y peut rien.'}]},
       {key: 'tenacity', wiki: 'Tenacity', example: 'tenacity',
         what: {en: 'Shortens most crowd control on you (stuns, slows, roots). It doesn\'t shorten knock-ups or suppression.',
           fr: 'Raccourcit la plupart des contrôles subis (étourdissements, ralentissements, immobilisations). Pas les projections ni les suppressions.'},
         with: [
           {en: 'Mercury\'s Treads, Sterak\'s Gage and the Tenacity stat shard give it.', fr: 'Les Sandales de Mercure, le Gage de Sterak et le fragment de Ténacité en donnent.'},
           {en: 'Sources multiply instead of adding up: 30% and 20% make 44%, not 50%.', fr: 'Les sources se multiplient au lieu de s\'additionner : 30 % et 20 % font 44 %, pas 50 %.'},
-        ]},
+        ],
+        counter: [{en: 'Knock-ups and suppression: tenacity doesn\'t shorten them.', fr: 'Projections et suppressions : la ténacité ne les raccourcit pas.'}]},
       {key: 'hpregen', wiki: 'Health_regeneration', example: 'hpregen',
         what: {en: 'Health you get back every 5 seconds.', fr: 'Les PV récupérés toutes les 5 secondes.'},
         with: [{en: 'Base health regen % multiplies only your champion\'s own regen, not the regen from items.',
-          fr: 'La régénération de PV de base % multiplie seulement celle de votre champion, pas celle des objets.'}]},
+          fr: 'La régénération de PV de base % multiplie seulement celle de votre champion, pas celle des objets.'}],
+        counter: [{en: 'Grievous Wounds cut regen too:', fr: 'Les Blessures graves réduisent aussi la régénération :', items: 'gw'}]},
     ]},
     {en: 'Healing', fr: 'Soins', stats: [
       {key: 'lifesteal', wiki: 'Life_steal', example: 'heal',
@@ -421,22 +444,28 @@ const GUIDE = (() => {
         with: [
           {en: 'Attack damage, attack speed and crits: more damage, more healing.', fr: 'Dégâts d\'attaque, vitesse d\'attaque et critiques : plus de dégâts, plus de soins.'},
           {en: 'Grievous Wounds cut it.', fr: 'Les Blessures graves le réduisent.'},
-        ]},
+        ],
+        counter: [{en: 'Grievous Wounds:', fr: 'Les Blessures graves :', items: 'gw'},
+          {en: 'Armor: less damage taken means less healing for them.', fr: 'L\'armure : moins de dégâts subis, c\'est moins de soins pour eux.', see: ['armor']}]},
       {key: 'omnivamp', wiki: 'Omnivamp', example: 'heal',
         what: {en: 'Like life steal, but heals from all the damage you deal, abilities included.',
           fr: 'Comme le vol de vie, mais soigne sur tous vos dégâts, sorts compris.'},
-        with: [{en: 'Grievous Wounds cut it too.', fr: 'Les Blessures graves le réduisent aussi.'}]},
+        with: [{en: 'Grievous Wounds cut it too.', fr: 'Les Blessures graves le réduisent aussi.'}],
+        counter: [{en: 'Grievous Wounds:', fr: 'Les Blessures graves :', items: 'gw'}]},
       {key: 'hsp', wiki: 'Heal_and_shield_power', example: 'hsp',
         what: {en: 'Makes the heals and shields you give stronger, on yourself and on allies. Here, it boosts your champion\'s own healing abilities.',
           fr: 'Renforce les soins et boucliers que vous donnez, à vous et à vos alliés. Ici, il renforce les sorts de soin de votre champion.'},
-        with: [{en: 'Mostly for supports and champions with healing abilities.', fr: 'Surtout pour les supports et les champions qui ont des sorts de soin.'}]},
+        with: [{en: 'Mostly for supports and champions with healing abilities.', fr: 'Surtout pour les supports et les champions qui ont des sorts de soin.'}],
+        counter: [{en: 'Grievous Wounds cut the heals:', fr: 'Les Blessures graves réduisent les soins :', items: 'gw'},
+          {en: 'Shields shrink when you damage the target:', fr: 'Les boucliers rétrécissent quand vous blessez la cible :', items: ['6695']}]},
     ]},
     {en: 'Movement', fr: 'Déplacement', stats: [
       {key: 'ms', wiki: 'Movement_speed', example: 'ms',
         what: {en: 'How fast you move. Above 415, only 80% of the extra speed counts, and above 490 only 50%.',
           fr: 'La vitesse à laquelle vous vous déplacez. Au-delà de 415, seuls 80 % de la vitesse en plus comptent, et 50 % au-delà de 490.'},
         with: [{en: 'Move speed % multiplies flat move speed (from boots), so buy boots first.',
-          fr: 'La vitesse de déplacement % multiplie la vitesse fixe (des bottes) : achetez les bottes d\'abord.'}]},
+          fr: 'La vitesse de déplacement % multiplie la vitesse fixe (des bottes) : achetez les bottes d\'abord.'}],
+        counter: [{en: 'Slows:', fr: 'Les ralentissements :', items: ['3116', '3143']}]},
     ]},
     {en: 'Game mechanics', fr: 'Mécaniques du jeu', stats: [
       {key: 'levels', wiki: 'Champion_statistic', example: 'levels', title: {en: 'Level growth', fr: 'Progression par niveau'},
@@ -502,7 +531,13 @@ const GUIDE = (() => {
       links: [{en: 'Riot Games legal policies', fr: 'Politiques légales de Riot Games', url: 'https://www.riotgames.com/en/legal'}]},
   ];
 
-  return {WIKI, EXAMPLES, GROUPS, SOURCES};
+  // Items tab: counters for what an item's description mentions outside its stats.
+  const ITEM_COUNTERS = {
+    shield: {en: 'Its shield shrinks when you damage the holder:', fr: 'Son bouclier rétrécit quand vous blessez son porteur :', items: ['6695']},
+    heal: {en: 'Its healing is cut by Grievous Wounds:', fr: 'Ses soins sont réduits par les Blessures graves :', items: 'gw'},
+  };
+
+  return {WIKI, EXAMPLES, GROUPS, SOURCES, ITEM_COUNTERS};
 })();
 
 if (typeof module === 'object') module.exports = GUIDE;

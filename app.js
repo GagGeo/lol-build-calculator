@@ -555,7 +555,11 @@ function createAdvisor(section) {
   ui.sort.addEventListener('change', () => (result ? suggest() : render()));
   ui.perGold.addEventListener('change', render);
   render();
-  return {markStale: () => {
+  return {suggestBy: (stat) => {
+    ui.sort.value = stat;
+    suggest();
+    section.scrollIntoView({behavior: 'smooth', block: 'start'});
+  }, markStale: () => {
     if (!result) return;
     const now = choices() !== snapshot;
     if (now !== stale) { stale = now; render(); }
@@ -837,6 +841,22 @@ function createItemsTab(section) {
     if ((rules.grievousWounds || {})[selected]) counts.push(t('countWounds', {pct: fmt(100 * rules.grievousWounds[selected], 0)}));
     if ((rules.advisorNotScored || []).includes(selected)) counts.push(t('countNotScored'));
     if (counts.length) parts.push(el('h4', {text: t('itemCounted')}), el('ul', {}, ...counts.map((c) => el('li', {text: c}))));
+    // Countered by: the counters of each stat it gives (stat cards), plus shields or healing its description mentions.
+    const ALIAS = {msPct: 'ms', hpRegenPct: 'hpregen', mpRegenPct: 'mpregen'};
+    const keys = new Set([...Object.keys(item.stats), ...(rules.itemStatPassives[selected] || []).map((o) => o.to || o.stat)]
+      .map((k) => ALIAS[k] || k));
+    const counters = [...keys].filter((k) => CARDS[k] && CARDS[k].counter).map((k) => el('li', {},
+      el('strong', {text: cardTitle(k) + (lang === 'fr' ? ' : ' : ': ')}),
+      ...CARDS[k].counter.flatMap((c, i) => [...(i ? ['; '] : []), ...counterNodes(c, selected)])));
+    const passive = description(item.desc.en || '');
+    if (/(?<!spell )shield/i.test(passive) && !counterItems(GUIDE.ITEM_COUNTERS.shield).includes(selected)) {
+      counters.push(el('li', {}, ...counterNodes(GUIDE.ITEM_COUNTERS.shield)));
+    }
+    const gwShown = ['lifesteal', 'omnivamp', 'hpregen'].some((k) => keys.has(k));
+    if (/\bheal(?!th)/i.test(passive) && !gwShown && !(rules.grievousWounds || {})[selected]) {
+      counters.push(el('li', {}, ...counterNodes(GUIDE.ITEM_COUNTERS.heal)));
+    }
+    if (counters.length) parts.push(el('h4', {text: t('guideCounter')}), el('ul', {}, ...counters));
     const text = description(item.desc[lang] || item.desc.en || '');
     if (text) parts.push(el('h4', {text: t('itemDescription')}), el('p', {class: 'item-desc', text}));
     ui.card.replaceChildren(...parts);
@@ -893,6 +913,24 @@ let itemsTab = null;
 // the calculator's own formulas (guide.js). Slider positions survive a language switch.
 const pick = (text) => text[lang] || text.en;
 const outLink = (url, text) => el('a', {href: url, target: '_blank', rel: 'noopener', text});
+// "Countered by" lines (guide.js counter entries): text, then item links (Items tab) and card links (Stats explained).
+const CARDS = Object.fromEntries(GUIDE.GROUPS.flatMap((g) => g.stats.map((c) => [c.key, c])));
+const cardTitle = (key) => (CARDS[key].title ? pick(CARDS[key].title) : t('stat_' + key));
+const counterItems = (c) => (c.items === 'gw' ? Object.keys(DATA.rules.grievousWounds || {}) : c.items || [])
+  .filter((id) => DATA.items[id]).sort((a, b) => byName(DATA.items[a], DATA.items[b]));
+const linkButton = (text, action) => {
+  const b = el('button', {type: 'button', class: 'link', text});
+  b.addEventListener('click', action);
+  return b;
+};
+const itemButton = (id) => linkButton(nm(DATA.items[id].name), () => itemsTab && itemsTab.open(id));
+function counterNodes(c, skip) { // skip: the item being shown, not listed as its own counter
+  const join = (xs) => xs.flatMap((x, i) => (i ? [', ', x] : [x]));
+  const items = counterItems(c).filter((id) => id !== skip).map(itemButton);
+  const see = (c.see || []).filter((k) => CARDS[k]).map((k) => linkButton(cardTitle(k), () => guideTab && guideTab.open(k)));
+  return [pick(c), ...(items.length ? [' ', ...join(items)] : []), ...(see.length ? [` (${t('see')} `, ...join(see), ')'] : [])];
+}
+
 function createGuideTab(section) {
   const values = {};
   function example(card) {
@@ -966,14 +1004,23 @@ function createGuideTab(section) {
     const cards = GUIDE.GROUPS[current].stats.map((card) => el('article', {class: 'item-card', id: 'guide-' + card.key},
       el('h4', {text: card.title ? pick(card.title) : t('stat_' + card.key)}), el('p', {text: pick(card.what)}),
       el('p', {class: 'guide-label', text: t('guideWith')}), el('ul', {}, ...card.with.map((w) => el('li', {text: pick(w)}))),
+      ...(card.counter ? [el('p', {class: 'guide-label', text: t('guideCounter')}),
+        el('ul', {}, ...card.counter.map((c) => el('li', {}, ...counterNodes(c))))] : []),
       ...(card.example ? [example(card)] : []), ...itemList(card),
       el('p', {class: 'note'}, outLink(GUIDE.WIKI + card.wiki, t('guideWiki')))));
     section.replaceChildren(el('h2', {text: t('guideTitle')}), el('div', {},
       el('p', {text: t('guideIntro')}), el('div', {class: 'subtabs', role: 'tablist', 'aria-label': t('guideTitle')}, ...tabs),
       el('div', {class: 'guide-cards', id: 'guide-cards', role: 'tabpanel', 'aria-labelledby': 'guide-tab-' + current}, ...cards)));
   }
+  // Show one card (from a "see" link): its sub tab, then scroll to it.
+  function open(key) {
+    if (TABS.includes('guide')) showTab('guide');
+    select(Math.max(0, GUIDE.GROUPS.findIndex((g) => g.stats.some((c) => c.key === key))));
+    const card = section.querySelector('#guide-' + key);
+    if (card) card.scrollIntoView({behavior: 'smooth', block: 'start'});
+  }
   render();
-  return {setLang: render};
+  return {setLang: render, open};
 }
 let guideTab = null;
 
@@ -1012,6 +1059,26 @@ function renderMatchup() {
   if (!enemyShown) return;
   renderDamage(panels[0], panels[1]);
   renderDamage(panels[1], panels[0]);
+  panels[1].results.append(counterBox(panels[0].getSelection(), panels[1].getSelection()));
+}
+
+// "How to beat them", under the enemy's damage: Engine.counterAdvice lines, each with a buy suggestion or counter items.
+function counterBox(you, enemy) {
+  const lines = Engine.counterAdvice(DATA, you, enemy).map((a) => {
+    const vars = Object.fromEntries(Object.entries(a).map(([k, v]) => [k, typeof v === 'number' ? fmt(v, 0) : v]));
+    const parts = [t('counter_' + a.id, vars)];
+    if (a.stat) {
+      const b = el('button', {type: 'button', class: 'link', text: t('counterSuggest', {stat: t('stat_' + a.stat)})});
+      b.addEventListener('click', () => advisor && advisor.suggestBy(a.stat));
+      parts.push(' ', b);
+    } else {
+      const items = CARDS[a.card].counter.filter((c) => c.items).flatMap(counterItems);
+      parts.push(' ', ...items.flatMap((id, i) => [...(i ? [', '] : []), itemButton(id)]));
+    }
+    return el('li', {}, ...parts);
+  });
+  return el('div', {class: 'counters'}, el('h3', {text: t('counterTitle', {champ: nm(DATA.champions[enemy.champ].name)})}),
+    el('ul', {}, ...lines), el('p', {class: 'note', text: t('counterNote')}));
 }
 
 function setEnemyShown(on) {

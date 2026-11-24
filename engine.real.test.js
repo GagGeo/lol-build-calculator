@@ -254,3 +254,22 @@ test('gold efficiency: reference items are 100%, others priced from them', () =>
   const value = Object.entries(D.items['3071'].stats).reduce((t, [k, v]) => t + v * (prices[k] || 0), 0);
   assert.ok(Math.abs(cleaver.value - value) < 1e-9 && Math.abs(cleaver.efficiency - value / 3000) < 1e-9);
 });
+
+test('counter items named in guide.js exist in this patch', () => {
+  const GUIDE = require('./guide.js');
+  const entries = [...GUIDE.GROUPS.flatMap((g) => g.stats.flatMap((c) => c.counter || [])), ...Object.values(GUIDE.ITEM_COUNTERS)];
+  for (const c of entries) if (Array.isArray(c.items)) c.items.forEach((id) => assert.ok(D.items[id], `item ${id}`));
+});
+
+test('counter advice reads both combos', () => {
+  const sel = (champ, items) => ({champ, level: 18, items, runes: null, stacked: false, stacks: 0, combo: Engine.defaultCombo(D, champ)});
+  // Lux deals magic damage; a tanky enemy Malphite with armor items.
+  const ids = (re) => Object.keys(D.items).filter((id) => re.test(D.items[id].name.en)).slice(0, 1);
+  const advice = Engine.counterAdvice(D, sel('Lux', []), sel('Malphite', [...ids(/^Thornmail$/), ...ids(/^Warmog/), ...ids(/^Randuin/)]));
+  const by = Object.fromEntries(advice.map((a) => [a.id, a]));
+  assert.ok(by.physical || by.magic || by.mixed, 'enemy damage split');
+  assert.ok(by.mrLow || by.mrHigh, 'Lux is magic, so magic pen advice');
+  assert.ok(by.tanky, 'Malphite with health items is tanky');
+  const vamp = Engine.counterAdvice(D, sel('Lux', []), sel('Jinx', ids(/^Bloodthirster$/)));
+  assert.ok(vamp.some((a) => a.id === 'heals'), 'life steal: Grievous Wounds');
+});

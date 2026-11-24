@@ -576,6 +576,7 @@ const Engine = (() => {
       const t = type === 'adaptive' ? adaptiveType() : type;
       const dmg = mitigate(raw, t, a, target.stats, shred) * ampFactor(source, t);
       hit(dmg, source);
+      add(byType, t, dmg);
       return {dmg, type: t};
     };
     const afterHit = (type, notes) => {
@@ -597,6 +598,7 @@ const Engine = (() => {
       }
     };
 
+    const byType = {}; // damage dealt per type (physical, magic, true)
     steps.forEach((step, i) => {
       if (killsAt !== null) return;
       const notes = [];
@@ -613,6 +615,7 @@ const Engine = (() => {
           if (r.perHit) notes.push('per_hit');
           const f = ampFactor('spell', r.type);
           hit(r.damage * f, 'spell');
+          add(byType, r.type, r.damage * f);
           damage += r.damage * f;
           damage += afterHit(r.type, notes);
           applyShred(r.type);
@@ -658,7 +661,38 @@ const Engine = (() => {
       if (hp <= 0 && killsAt === null) { killsAt = i + 1; notes.push('kills'); }
       rows.push({step: i + 1, label: step.spell || 'A×' + step.autos, damage, hpAfter: Math.max(0, hp), healed: stepHealed, notes});
     });
-    return {rows, hpStart, hpLeft: Math.max(0, hp), killsAt, excluded, flags, healed, healedUsed, grievous};
+    return {rows, hpStart, hpLeft: Math.max(0, hp), killsAt, excluded, flags, healed, healedUsed, grievous, byType};
+  }
+
+  // "How to beat them": what the enemy relies on, read from both combos (each against a full-health target).
+  // Each entry names a stat to buy (stat) or a Stats explained card whose counter items apply (card).
+  // ponytail: fixed thresholds (60% of one type, 120 armor, 80 magic resist, 3000 health), tune if they mislead
+  function counterAdvice(data, you, enemy) {
+    const ys = championStats(data, you), es = championStats(data, enemy);
+    const combo = (a, as, b, bs) => runCombo(data, {...a, stats: as}, {champ: b.champ, stats: bs, currentHpPct: 100, items: b.items},
+      a.combo || defaultCombo(data, a.champ));
+    const share = (c) => {
+      const sum = Object.values(c.byType).reduce((s, v) => s + v, 0);
+      return sum > 0 ? Object.fromEntries(['physical', 'magic', 'true'].map((k) => [k, 100 * (c.byType[k] || 0) / sum])) : null;
+    };
+    const theirs = combo(enemy, es, you, ys), mine = share(combo(you, ys, enemy, es)), th = share(theirs);
+    const out = [];
+    if (th) {
+      if (th.physical >= 60) out.push({id: 'physical', pct: th.physical, stat: 'armor'});
+      else if (th.magic >= 60) out.push({id: 'magic', pct: th.magic, stat: 'mr'});
+      else out.push({id: 'mixed', physical: th.physical, magic: th.magic, stat: 'hp'});
+      if (th.true >= 25) out.push({id: 'true', pct: th.true, stat: 'hp'});
+    }
+    if (theirs.healed > 0 || (es.total.lifesteal || 0) + (es.total.omnivamp || 0) > 0) out.push({id: 'heals', card: 'lifesteal'});
+    if (mine && mine.physical >= mine.magic) {
+      const armor = es.total.armor || 0;
+      out.push(armor >= 120 ? {id: 'armorHigh', value: armor, stat: 'armorPenPct'} : {id: 'armorLow', value: armor, stat: 'lethality'});
+    } else if (mine) {
+      const mr = es.total.mr || 0;
+      out.push(mr >= 80 ? {id: 'mrHigh', value: mr, stat: 'magicPenPct'} : {id: 'mrLow', value: mr, stat: 'magicPen'});
+    }
+    if (es.total.hp >= 3000) out.push({id: 'tanky', value: es.total.hp, card: 'hp'});
+    return out;
   }
 
   // --- Stage 3: the shop ------------------------------------------------------------------------
@@ -1004,7 +1038,7 @@ const Engine = (() => {
 
   return {RANKABLE_STATS, bestBuilds, bestRunePage, rankStat, optimizeChampion, statBreakdown, statGoldPrices, goldEfficiency, adviseBuys, rankBuys, purchase, growth, capMoveSpeed, clampLevel, championStats, ultRank, validateBuild, allowedItems, pruneBuild,
           validateRunePage, normalizeRunePage, buildCost, goldWarning, evalCalc, skillRanks,
-          mitigate, autoAttack, spellDamage, runCombo, DEFAULT_COMBO, defaultCombo, clampPct, spellHeal};
+          mitigate, autoAttack, spellDamage, runCombo, counterAdvice, DEFAULT_COMBO, defaultCombo, clampPct, spellHeal};
 })();
 
 if (typeof module === 'object') module.exports = Engine;

@@ -15,6 +15,10 @@ test('every card has both languages, a stat label and a known example', () => {
       else assert.ok(I18N.LABELS.en['stat_' + c.key] && I18N.LABELS.fr['stat_' + c.key], `${c.key}: stat label`);
       assert.ok(c.wiki, `${c.key}: wiki page`);
       if (c.example) assert.ok(GUIDE.EXAMPLES[c.example], `${c.key}: example ${c.example}`);
+      for (const x of c.counter || []) {
+        both(x, c.key);
+        (x.see || []).forEach((k) => assert.ok(GUIDE.GROUPS.some((g) => g.stats.some((o) => o.key === k)), `${c.key}: see ${k}`));
+      }
     }
   }
 });
