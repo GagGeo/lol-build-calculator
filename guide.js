@@ -538,13 +538,80 @@ const GUIDE = (() => {
       links: [{en: 'Riot Games legal policies', fr: 'Politiques légales de Riot Games', url: 'https://www.riotgames.com/en/legal'}]},
   ];
 
+  // Classes tab, one card per Riot class (Data Dragon tags). "keyStats": weights for ranking items (Engine.classItems);
+  // "strong"/"weak": other classes it tends to beat or lose to, with why.
+  const CLASSES = [
+    {tag: 'Fighter', keyStats: {ad: 2, hp: 2, ah: 1, omnivamp: 1},
+      what: {en: 'Fighters deal steady damage up close and can take a beating. They win long fights rather than one-shot.',
+        fr: 'Les combattants infligent des dégâts réguliers au contact et encaissent bien. Ils gagnent les combats longs plutôt qu\'en un coup.'},
+      pros: [{en: 'Good damage and good health at once.', fr: 'De bons dégâts et de bons PV à la fois.'},
+        {en: 'Strong in long fights and duels, often with healing.', fr: 'Forts dans les combats longs et les duels, souvent avec des soins.'}],
+      cons: [{en: 'Must walk up to the target: easy to kite with slows and range.', fr: 'Doivent aller au contact : faciles à tenir à distance avec ralentissements et portée.'},
+        {en: 'Fall behind against Grievous Wounds when they rely on healing.', fr: 'Souffrent des Blessures graves quand ils comptent sur les soins.'}],
+      strong: [{tag: 'Assassin', en: 'enough health to survive their burst', fr: 'assez de PV pour survivre à leur explosion'},
+        {tag: 'Tank', en: 'they keep dealing damage while the tank can\'t', fr: 'ils continuent de frapper quand le tank ne peut pas'}],
+      weak: [{tag: 'Marksman', en: 'shot from range while walking up', fr: 'touchés de loin en approchant'},
+        {tag: 'Mage', en: 'slowed and poked before reaching them', fr: 'ralentis et harcelés avant de les atteindre'}]},
+    {tag: 'Tank', keyStats: {hp: 2, armor: 2, mr: 2, ah: 1},
+      what: {en: 'Tanks soak damage and lock enemies down with crowd control so their team can hit them.',
+        fr: 'Les tanks absorbent les dégâts et immobilisent les ennemis pour que leur équipe puisse frapper.'},
+      pros: [{en: 'Very hard to kill; they start fights and protect carries.', fr: 'Très durs à tuer ; ils lancent les combats et protègent les carrys.'},
+        {en: 'Much crowd control (stuns, knock-ups, taunts).', fr: 'Beaucoup de contrôles (étourdissements, projections, provocations).'}],
+      cons: [{en: 'Low damage: they rely on their team to finish kills.', fr: 'Peu de dégâts : ils comptent sur leur équipe pour tuer.'},
+        {en: 'Melted late by penetration % and damage based on health.', fr: 'Fondent en fin de partie face à la pénétration % et aux dégâts en % des PV.'}],
+      strong: [{tag: 'Assassin', en: 'too tanky to burst, and their crowd control stops the dive', fr: 'trop solides pour être tués d\'un coup, et leurs contrôles arrêtent le plongeon'}],
+      weak: [{tag: 'Marksman', en: 'steady damage, penetration % and on-hit health damage', fr: 'dégâts réguliers, pénétration % et dégâts en % des PV'},
+        {tag: 'Mage', en: 'magic penetration % and health-based burns (Liandry\'s)', fr: 'pénétration magique % et brûlures en % des PV (Liandry)'}]},
+    {tag: 'Mage', keyStats: {ap: 3, magicPen: 2, magicPenPct: 1, ah: 1},
+      what: {en: 'Mages deal magic damage with their abilities from range: burst, poke or area damage.',
+        fr: 'Les mages infligent des dégâts magiques avec leurs sorts à distance : explosion, harcèlement ou zone.'},
+      pros: [{en: 'High damage from a safe distance, often to several enemies.', fr: 'Beaucoup de dégâts à distance de sécurité, souvent sur plusieurs ennemis.'},
+        {en: 'Much crowd control and zone control.', fr: 'Beaucoup de contrôles et de contrôle de zone.'}],
+      cons: [{en: 'Fragile: little health and armor.', fr: 'Fragiles : peu de PV et d\'armure.'},
+        {en: 'Weak while their abilities are on cooldown.', fr: 'Faibles quand leurs sorts sont en récupération.'}],
+      strong: [{tag: 'Fighter', en: 'slows and range keep them away', fr: 'ralentissements et portée les tiennent à distance'},
+        {tag: 'Tank', en: 'magic penetration % and health-based damage', fr: 'pénétration magique % et dégâts en % des PV'}],
+      weak: [{tag: 'Assassin', en: 'jumped on and killed before casting', fr: 'attrapés et tués avant de lancer leurs sorts'}]},
+    {tag: 'Assassin', keyStats: {ad: 2, lethality: 3, ah: 1},
+      what: {en: 'Assassins jump on one fragile target, kill it in a burst, then get away. AP assassins build mage items instead.',
+        fr: 'Les assassins sautent sur une cible fragile, la tuent d\'un coup, puis s\'enfuient. Les assassins AP prennent plutôt des objets de mage.'},
+      pros: [{en: 'Kill mages and marksmen before they can act.', fr: 'Tuent mages et tireurs avant qu\'ils agissent.'},
+        {en: 'Very mobile: dashes, blinks, stealth.', fr: 'Très mobiles : ruées, téléportations, camouflage.'}],
+      cons: [{en: 'Fragile: if the burst fails, they die.', fr: 'Fragiles : si l\'explosion échoue, ils meurent.'},
+        {en: 'Lethality is weak against armor: tanks shrug them off.', fr: 'La létalité est faible contre l\'armure : les tanks les ignorent.'}],
+      strong: [{tag: 'Mage', en: 'low health and no escape', fr: 'peu de PV et pas de fuite'},
+        {tag: 'Marksman', en: 'low health, out of position', fr: 'peu de PV, mal placés'}],
+      weak: [{tag: 'Tank', en: 'too much health and armor to burst', fr: 'trop de PV et d\'armure pour les tuer d\'un coup'},
+        {tag: 'Fighter', en: 'survive the burst and hit back', fr: 'survivent à l\'explosion et répliquent'}]},
+    {tag: 'Marksman', keyStats: {ad: 2, as: 2, crit: 3, armorPenPct: 1},
+      what: {en: 'Marksmen deal steady damage with basic attacks from range. Weak early, they carry fights late in the game.',
+        fr: 'Les tireurs infligent des dégâts réguliers avec leurs attaques de base à distance. Faibles au début, ils portent les combats en fin de partie.'},
+      pros: [{en: 'The highest steady damage late in the game, from range.', fr: 'Les dégâts réguliers les plus élevés en fin de partie, à distance.'},
+        {en: 'Their damage keeps up against tanks (penetration %, on-hit).', fr: 'Leurs dégâts tiennent contre les tanks (pénétration %, effets à l\'impact).'}],
+      cons: [{en: 'Fragile and short on escapes.', fr: 'Fragiles et avec peu de fuites.'},
+        {en: 'Need many items before they are strong.', fr: 'Ont besoin de beaucoup d\'objets pour être forts.'}],
+      strong: [{tag: 'Tank', en: 'steady damage that ignores much of their armor', fr: 'des dégâts réguliers qui ignorent une bonne part de leur armure'},
+        {tag: 'Fighter', en: 'hit them from range as they walk up', fr: 'les touchent de loin pendant qu\'ils approchent'}],
+      weak: [{tag: 'Assassin', en: 'burst before they can attack', fr: 'tués d\'un coup avant de pouvoir attaquer'}]},
+    {tag: 'Support', keyStats: {hsp: 3, ah: 2, mpRegenPct: 2, ap: 1},
+      what: {en: 'Supports help their team more than they deal damage: heals, shields, crowd control and vision. Riot\'s Support class covers enchanters and catchers.',
+        fr: 'Les supports aident leur équipe plus qu\'ils n\'infligent de dégâts : soins, boucliers, contrôles et vision. La classe Support de Riot couvre enchanteurs et attrapeurs.'},
+      pros: [{en: 'Make their carries much stronger and harder to kill.', fr: 'Rendent leurs carrys bien plus forts et plus durs à tuer.'},
+        {en: 'Need few items to be useful.', fr: 'Ont besoin de peu d\'objets pour être utiles.'}],
+      cons: [{en: 'Little damage of their own.', fr: 'Peu de dégâts par eux-mêmes.'},
+        {en: 'Heals are cut by Grievous Wounds; shields by Serpent\'s Fang.', fr: 'Les soins sont réduits par les Blessures graves ; les boucliers par le Crochet de serpent.'}],
+      strong: [{tag: 'Assassin', en: 'shields, heals and crowd control save the target', fr: 'boucliers, soins et contrôles sauvent la cible'}],
+      weak: [{tag: 'Assassin', en: 'enchanters themselves are an easy kill', fr: 'les enchanteurs eux-mêmes sont faciles à tuer'},
+        {tag: 'Mage', en: 'poked down before they can help', fr: 'harcelés avant de pouvoir aider'}]},
+  ];
+
   // Items tab: counters for what an item's description mentions outside its stats.
   const ITEM_COUNTERS = {
     shield: {en: 'Its shield shrinks when you damage the holder:', fr: 'Son bouclier rétrécit quand vous blessez son porteur :', items: ['6695']},
     heal: {en: 'Its healing is cut by Grievous Wounds:', fr: 'Ses soins sont réduits par les Blessures graves :', items: 'gw'},
   };
 
-  return {WIKI, EXAMPLES, GROUPS, SOURCES, ITEM_COUNTERS};
+  return {WIKI, EXAMPLES, GROUPS, SOURCES, ITEM_COUNTERS, CLASSES};
 })();
 
 if (typeof module === 'object') module.exports = GUIDE;

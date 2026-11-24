@@ -47,3 +47,14 @@ test('sources: both languages and absolute links', () => {
     s.links.forEach((l) => { both(l, l.url); assert.match(l.url, /^https:\/\//); });
   }
 });
+
+test('classes: both languages, known classes and stat labels', () => {
+  const tags = GUIDE.CLASSES.map((c) => c.tag);
+  for (const c of GUIDE.CLASSES) {
+    both(c.what, c.tag);
+    [...c.pros, ...c.cons, ...c.strong, ...c.weak].forEach((x) => both(x, c.tag));
+    [...c.strong, ...c.weak].forEach((x) => assert.ok(tags.includes(x.tag), `${c.tag}: ${x.tag}`));
+    for (const k of Object.keys(c.keyStats)) assert.ok(I18N.LABELS.en['stat_' + k], `${c.tag}: stat ${k}`);
+    assert.ok(I18N.LABELS.en['tag_' + c.tag] && I18N.LABELS.fr['tag_' + c.tag], c.tag);
+  }
+});

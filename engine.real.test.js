@@ -286,3 +286,16 @@ test('champion roles come with the data', () => {
   assert.ok(D.champions.Garen.positions.includes('TOP'));
   assert.ok(Object.values(D.champions).filter((c) => c.positions.length).length > 150);
 });
+
+test('class items: a few picks any player would expect', () => {
+  const GUIDE = require('./guide.js');
+  const of = (tag) => Engine.classItems(D, GUIDE.CLASSES.find((c) => c.tag === tag).keyStats);
+  const name = (id) => D.items[id].name.en;
+  assert.ok(of('Mage').items.map(name).includes("Rabadon's Deathcap"));
+  assert.equal(name(of('Mage').boots), "Sorcerer's Shoes");
+  assert.equal(name(of('Marksman').boots), "Berserker's Greaves");
+  assert.ok(of('Marksman').items.map(name).includes('Infinity Edge'));
+  for (const c of GUIDE.CLASSES) assert.equal(of(c.tag).items.length, 6, c.tag);
+  // Every class has champions in the data.
+  for (const c of GUIDE.CLASSES) assert.ok(Object.values(D.champions).some((ch) => ch.tags.includes(c.tag)), c.tag);
+});

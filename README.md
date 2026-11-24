@@ -24,8 +24,9 @@ To share it, send that link.
 - **Champ Optimization** (third tab): pick a champion, a level and a stat, and optionally a gold limit and the champion's stacks. You get the build (6 items and a rune page) that reaches the most of it, its cost and all its stats, plus the next best builds. Untick an item to see the stats without it; **Item details** opens it in the Items tab.
 - **Items** (fourth tab): every item, searchable, filtered by type or stat and sorted by price or gold efficiency. Click one for its stats, cost, build path, limits, what the calculator counts and its description.
 - **Champions** (fifth tab): every champion with its usual roles (Top, Jungle, Mid, Bot, Support), its class, and the stats its abilities scale with best, measured with the calculator's own damage. Filter by role; **Open as You** or **Open as Enemy** loads it into the calculator.
-- **Stats explained** (sixth tab): what each stat does and how it works with the others, for newer players, one sub tab per category (Basic attacks, Abilities, Defense…), with small examples you can move with sliders, what counters each stat, and a list of the items that give each stat.
-- **Sources** (seventh tab): where the data and formulas come from, with links.
+- **Classes** (sixth tab): Riot's six classes (Fighter, Tank, Mage, Assassin, Marksman, Support): what each does, its strengths and weaknesses, which classes it beats or loses to, where it's usually played, the items and boots that fit it, and its champions whose abilities scale best.
+- **Stats explained** (seventh tab): what each stat does and how it works with the others, for newer players, one sub tab per category (Basic attacks, Abilities, Defense…), with small examples you can move with sliders, what counters each stat, and a list of the items that give each stat.
+- **Sources** (eighth tab): where the data and formulas come from, with links.
 - In any stats table, **Show details** splits the bonus into one column per item, the runes and the champion.
 
 The whole page switches between English and French with the button at the top right.
@@ -95,8 +96,9 @@ Pour le partager, envoyez ce lien.
 - **Optimisation** (troisième onglet) : choisissez un champion, un niveau et une statistique, et si vous voulez une limite d'or et les cumuls du champion. Vous obtenez le build (6 objets et une page de runes) qui en atteint le plus, son coût et toutes ses statistiques, ainsi que les builds suivants. Décochez un objet pour voir les statistiques sans lui ; **Détails de l'objet** l'ouvre dans l'onglet Objets.
 - **Objets** (quatrième onglet) : tous les objets, avec recherche, filtre par type ou statistique et tri par prix ou rentabilité. Cliquez sur un objet pour ses statistiques, son coût, ses composants, ses limites, ce que le calculateur compte et sa description.
 - **Champions** (cinquième onglet) : chaque champion avec ses rôles habituels (Haut, Jungle, Milieu, Bas, Support), sa classe et les stats avec lesquelles ses sorts évoluent le mieux, mesurées avec les dégâts du calculateur. Filtre par rôle ; **Ouvrir pour Vous** ou **Ouvrir pour Adversaire** le charge dans le calculateur.
-- **Les stats expliquées** (sixième onglet) : à quoi sert chaque stat et comment elle agit avec les autres, pour les joueurs débutants, un sous-onglet par catégorie (Attaques de base, Sorts, Défense…), avec de petits exemples à curseurs, ce qui contre chaque stat, et la liste des objets qui donnent chaque stat.
-- **Sources** (septième onglet) : d'où viennent les données et les formules, avec des liens.
+- **Classes** (sixième onglet) : les six classes de Riot (Combattant, Tank, Mage, Assassin, Tireur, Support) : ce que fait chacune, ses points forts et faibles, les classes qu'elle bat ou qui la battent, où elle est jouée, les objets et bottes qui lui vont, et ses champions dont les sorts évoluent le mieux.
+- **Les stats expliquées** (septième onglet) : à quoi sert chaque stat et comment elle agit avec les autres, pour les joueurs débutants, un sous-onglet par catégorie (Attaques de base, Sorts, Défense…), avec de petits exemples à curseurs, ce qui contre chaque stat, et la liste des objets qui donnent chaque stat.
+- **Sources** (huitième onglet) : d'où viennent les données et les formules, avec des liens.
 - Dans tout tableau de statistiques, **Afficher le détail** répartit le bonus en une colonne par objet, les runes et le champion.
 
 Toute la page passe de l'anglais au français avec le bouton en haut à droite.

@@ -913,10 +913,10 @@ let itemsTab = null;
 
 // "Champions" tab: usual roles (Meraki, see prep.py), Riot's classes, and what each kit scales with
 // (Engine.kitScaling, measured with the calculator's own damage). A card on top for the champion picked.
+const scaling = new Map(); // champion id -> Engine.kitScaling result (the data never changes on the page)
+const scaleOf = (id) => scaling.get(id) || scaling.set(id, Engine.kitScaling(DATA, id)).get(id);
 function createChampionsTab(section) {
   let selected = null;
-  const scaling = new Map(); // champion id -> kitScaling result (the data never changes on the page)
-  const scaleOf = (id) => scaling.get(id) || scaling.set(id, Engine.kitScaling(DATA, id)).get(id);
   const ROLES = ['TOP', 'JUNGLE', 'MIDDLE', 'BOTTOM', 'SUPPORT'];
   const ui = {
     title: el('h2', {id: 'champions-title'}), search: el('input', {type: 'search', id: 'champs-search'}),
@@ -992,9 +992,81 @@ function createChampionsTab(section) {
   ui.role.addEventListener('change', render);
   ui.search.addEventListener('input', render);
   render();
-  return {setLang: render};
+  return {setLang: render, open: (id) => { if (TABS.includes('champions')) showTab('champions'); open(id); }};
 }
 let championsTab = null;
+
+// "Classes" tab: one sub tab per Riot class (guide.js CLASSES): what it does, strengths and weaknesses, which classes
+// it beats or loses to, where it's played (Meraki roles), the champions whose abilities scale best and the items that fit.
+function createClassesTab(section) {
+  let current = 0;
+  const shownAll = new Set();
+  const label = (text) => el('p', {class: 'guide-label', text});
+  const tagLink = (tag) => linkButton(t('tag_' + tag), () => select(GUIDE.CLASSES.findIndex((c) => c.tag === tag), true));
+  function select(i, focus) {
+    current = i;
+    render();
+    if (focus) section.querySelector('#class-tab-' + i).focus();
+  }
+  function card(c) {
+    const champs = Object.keys(DATA.champions).filter((id) => (DATA.champions[id].tags || []).includes(c.tag));
+    // Usually played: each champion's roles, as a share of all the class's role entries.
+    // Roles and the scaling ranking use the champions whose main (first) class this is: a mage also tagged
+    // Marksman (Azir) would blur the Marksman card.
+    const main = champs.filter((id) => DATA.champions[id].tags[0] === c.tag);
+    const roles = {};
+    main.forEach((id) => (DATA.champions[id].positions || []).forEach((p) => { roles[p] = (roles[p] || 0) + 1; }));
+    const roleTotal = Object.values(roles).reduce((a, b) => a + b, 0);
+    const played = Object.entries(roles).sort((a, b) => b[1] - a[1]).filter(([, n]) => n / roleTotal >= 0.1)
+      .map(([p, n]) => `${t('role_' + p)} ${fmt(100 * n / roleTotal, 0)}%`).join(', ');
+    const ranked = main.filter((id) => scaleOf(id).stats.length)
+      .sort((a, b) => scaleOf(b).stats[0].gain - scaleOf(a).stats[0].gain);
+    const champLink = (id) => linkButton(nm(DATA.champions[id].name), () => championsTab && championsTab.open(id));
+    const vs = (list) => el('ul', {}, ...list.map((x) => el('li', {}, tagLink(x.tag), ': ' + pick(x))));
+    const picks = Engine.classItems(DATA, c.keyStats);
+    const itemLine = (id) => el('li', {}, itemButton(id), ' ' + Object.entries(DATA.items[id].stats).filter(([k]) => c.keyStats[k])
+      .map(([k, v]) => `+${fmt(v)}${k === 'as' ? '%' : ''} ${t('stat_' + k)}`).join(', ')); // other % stats say so in their name
+    const all = shownAll.has(c.tag);
+    const toggle = linkButton(all ? t('guideHideItems') : t('classAllChamps', {n: champs.length}), () => {
+      if (all) shownAll.delete(c.tag); else shownAll.add(c.tag);
+      render();
+    });
+    toggle.setAttribute('aria-expanded', String(all));
+    return el('article', {class: 'item-card'},
+      el('h3', {text: t('tag_' + c.tag)}), el('p', {text: pick(c.what)}),
+      ...(played ? [el('p', {text: `${t('classPlayed')}: ${played}`})] : []),
+      label(t('classPros')), el('ul', {}, ...c.pros.map((x) => el('li', {text: pick(x)}))),
+      label(t('classCons')), el('ul', {}, ...c.cons.map((x) => el('li', {text: pick(x)}))),
+      label(t('classStrong')), vs(c.strong), label(t('classWeak')), vs(c.weak),
+      label(t('classKeyStats')), el('p', {}, ...Object.keys(c.keyStats).flatMap((k, i) => [...(i ? [', '] : []),
+        CARDS[k] ? linkButton(cardTitle(k), () => guideTab && guideTab.open(k)) : t('stat_' + k)])),
+      label(t('classItems')), el('ul', {}, ...picks.items.map(itemLine)),
+      ...(picks.boots ? [el('p', {}, t('classBoots') + ' ', itemButton(picks.boots))] : []),
+      label(t('classChamps')), el('ol', {}, ...ranked.slice(0, 8).map((id) => el('li', {}, champLink(id), ' ' +
+        t('classChampGain', {stat: t('stat_' + scaleOf(id).stats[0].stat), gain: fmt(scaleOf(id).stats[0].gain, 0)})))),
+      el('p', {class: 'guide-label'}, toggle),
+      ...(all ? [el('p', {}, ...champs.sort((a, b) => byName(DATA.champions[a], DATA.champions[b]))
+        .flatMap((id, i) => [...(i ? [', '] : []), champLink(id)]))] : []),
+      el('p', {class: 'note', text: t('classNote')}));
+  }
+  function render() {
+    const tabs = GUIDE.CLASSES.map((c, i) => {
+      const b = el('button', {type: 'button', role: 'tab', id: 'class-tab-' + i, 'aria-controls': 'class-card',
+        'aria-selected': String(i === current), tabindex: i === current ? 0 : -1, text: t('tag_' + c.tag)});
+      b.addEventListener('click', () => select(i));
+      b.addEventListener('keydown', (e) => {
+        if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') select((i + (e.key === 'ArrowRight' ? 1 : GUIDE.CLASSES.length - 1)) % GUIDE.CLASSES.length, true);
+      });
+      return b;
+    });
+    section.replaceChildren(el('h2', {text: t('tabClasses')}), el('p', {text: t('classIntro')}),
+      el('div', {class: 'subtabs', role: 'tablist', 'aria-label': t('tabClasses')}, ...tabs),
+      el('div', {id: 'class-card', role: 'tabpanel', 'aria-labelledby': 'class-tab-' + current}, card(GUIDE.CLASSES[current])));
+  }
+  render();
+  return {setLang: render};
+}
+let classesTab = null;
 
 // "Stats explained" tab: one card per stat (what it does, what it works with) and live examples computed with
 // the calculator's own formulas (guide.js). Slider positions survive a language switch.
@@ -1128,7 +1200,7 @@ let sourcesTab = null;
 
 // Tabs: the calculator (panels + advisor), the rankings and the champion optimizer. The choice is remembered.
 // Only tabs present in the page: a cached older index.html next to a newer app.js must not break the page.
-const TABS = ['calculator', 'rankings', 'optimize', 'items', 'champions', 'guide', 'sources'].filter((id) => document.getElementById(id) && document.getElementById('tab-' + id));
+const TABS = ['calculator', 'rankings', 'optimize', 'items', 'champions', 'classes', 'guide', 'sources'].filter((id) => document.getElementById(id) && document.getElementById('tab-' + id));
 function showTab(name) {
   for (const [tab, panel] of TABS.map((x) => [x, x])) {
     const selected = tab === name;
@@ -1189,6 +1261,7 @@ function renderPage() {
   if (optimizer) optimizer.setLang();
   if (itemsTab) itemsTab.setLang();
   if (championsTab) championsTab.setLang();
+  if (classesTab) classesTab.setLang();
   if (guideTab) guideTab.setLang();
   if (sourcesTab) sourcesTab.setLang();
   document.getElementById('tab-calculator').textContent = t('tabCalculator');
@@ -1196,6 +1269,7 @@ function renderPage() {
   if (optimizer) document.getElementById('tab-optimize').textContent = t('tabOptimize');
   if (itemsTab) document.getElementById('tab-items').textContent = t('tabItems');
   if (championsTab) document.getElementById('tab-champions').textContent = t('tabChampions');
+  if (classesTab) document.getElementById('tab-classes').textContent = t('tabClasses');
   if (guideTab) document.getElementById('tab-guide').textContent = t('tabGuide');
   if (sourcesTab) document.getElementById('tab-sources').textContent = t('tabSources');
   addEnemyButton.textContent = t('addEnemy');
@@ -1221,6 +1295,7 @@ rankings = createRankings(document.getElementById('rankings'));
 if (TABS.includes('optimize')) optimizer = createOptimizer(document.getElementById('optimize'));
 if (TABS.includes('items')) itemsTab = createItemsTab(document.getElementById('items'));
 if (TABS.includes('champions')) championsTab = createChampionsTab(document.getElementById('champions'));
+if (TABS.includes('classes') && typeof GUIDE === 'object') classesTab = createClassesTab(document.getElementById('classes'));
 if (TABS.includes('guide') && typeof GUIDE === 'object') guideTab = createGuideTab(document.getElementById('guide'));
 if (TABS.includes('sources') && typeof GUIDE === 'object') sourcesTab = createSourcesTab(document.getElementById('sources'));
 TABS.forEach((name, i) => {
