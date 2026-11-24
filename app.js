@@ -23,6 +23,16 @@ const el = (tag, attrs = {}, ...children) => {
   return node;
 };
 
+// Item and champion pictures from Data Dragon (the same source as the data). Decorative: the name is always next to it.
+const IMG = `https://ddragon.leagueoflegends.com/cdn/${DATA.patch}/img/`;
+const itemIcon = (id) => `${IMG}item/${id}.png`;
+const champIcon = (id) => `${IMG}champion/${id}.png`;
+const icon = (src, cls = '') => {
+  const img = el('img', {src, alt: '', class: ('icon ' + cls).trim(), loading: 'lazy'});
+  img.addEventListener('error', () => { img.hidden = true; });
+  return img;
+};
+
 const fmt = (n, digits = 1) => {
   const r = Math.round(n * 10 ** digits) / 10 ** digits;
   return r.toLocaleString(lang === 'fr' ? 'fr-FR' : 'en-US', {maximumFractionDigits: digits});
@@ -101,7 +111,7 @@ function createPanel(container, side, onChange) {
     champ: firstChamp, level: 1, stacks: 0, stacked: false, buffs: {},
     items: [null, null, null, null, null, null],
     runes: Engine.normalizeRunePage(DATA, {}),
-    currentHpPct: 100, priority: ['Q', 'W', 'E'], combo: Engine.defaultCombo(DATA, firstChamp), gold: 0,
+    currentHpPct: 100, priority: Engine.skillOrder(DATA, firstChamp).order, combo: Engine.defaultCombo(DATA, firstChamp), gold: 0,
   };
   // A new champion gets its own default combo, unless the combo was edited.
   const switchChamp = (champ) => {
@@ -109,6 +119,7 @@ function createPanel(container, side, onChange) {
       state.combo = Engine.defaultCombo(DATA, champ);
     }
     state.champ = champ;
+    state.priority = Engine.skillOrder(DATA, champ).order; // each champion starts on its usual skill order
   };
   let removedNotice = '';
 
@@ -126,7 +137,7 @@ function createPanel(container, side, onChange) {
     cost: el('div', {class: 'cost'}), notices: el('div'), statsView: createStatsView(), note: el('p', {class: 'note'}),
     hp: el('input', {type: 'number', min: 1, max: 100, step: 1, id: side + '-hp'}),
     gold: el('input', {type: 'number', min: 0, step: 1, id: side + '-gold'}),
-    priority: el('select', {id: side + '-priority'}),
+    priority: el('select', {id: side + '-priority'}), priorityNote: el('p', {class: 'note'}),
     comboList: el('ol', {class: 'combo-list'}), addStep: el('select', {id: side + '-addstep'}),
     addButton: el('button', {type: 'button'}), resetButton: el('button', {type: 'button'}),
     results: el('div', {class: 'results full'}),
@@ -145,7 +156,7 @@ function createPanel(container, side, onChange) {
     drakes: drakes.map((b) => ({b, input: el('input', {type: 'number', min: 0, max: b.max, step: 1, id: `${side}-buff-${b.id}`})})),
     drakesTitle: el('p', {class: 'guide-label'}), note: el('p', {class: 'note'}),
   };
-  const buffBox = el('details', {class: 'buffs'}, buffUi.summary,
+  const buffBox = el('details', {class: 'setup'}, buffUi.summary,
     label('buffElixir', side + '-elixir'), buffUi.elixir,
     ...(baron ? [label('buffBaron', side + '-baron'), buffUi.baron] : []),
     ...buffUi.checks.map((c) => el('label', {class: 'check'}, c.input, c.text)),
@@ -182,30 +193,42 @@ function createPanel(container, side, onChange) {
     buffUi.note.textContent = t('buffsNote');
   }
 
-  const left = el('div', {},
-    label('champion', side + '-champ'), ui.champ,
-    label('level', side + '-level'), el('div', {class: 'row'}, ui.range, ui.number),
-    stacksWrap,
-    label('currentHp', side + '-hp'), ui.hp,
-    label('skillOrder', side + '-priority'), ui.priority,
-    el('h3', {'data-k': 'runes'}),
+  // Layout: who (portrait, champion, level), then what you have (items, stats), then the setup you open when needed.
+  ui.portrait = el('img', {class: 'portrait', alt: ''});
+  ui.champTitle = el('p', {class: 'champ-title'});
+  ui.champ.classList.add('champ-select');
+  const identity = el('div', {class: 'identity full'}, ui.portrait, el('div', {},
+    label('champion', side + '-champ'), ui.champ, ui.champTitle,
+    label('level', side + '-level'), el('div', {class: 'row'}, ui.range, ui.number)));
+  ui.slotBoxes = ui.slots.map((s) => {
+    const img = el('img', {alt: ''}), empty = el('span', {class: 'empty-icon'});
+    img.addEventListener('error', () => { img.hidden = true; empty.hidden = false; });
+    return {box: el('div', {class: 'slot'}, img, empty, s), img, empty};
+  });
+  ui.runesValue = el('span', {class: 'summary-value'});
+  ui.optionsValue = el('span', {class: 'summary-value'});
+  const runesBox = el('details', {class: 'setup'}, el('summary', {}, el('span', {'data-k': 'runes'}), ui.runesValue),
     el('div', {class: 'runes-grid'},
       el('div', {}, label('primary', side + '-primary'), ui.primary, label('keystone', side + '-keystone'), ui.keystone,
         ...ui.primaryRunes.flatMap((s) => [el('label', {}, ''), s])),
       el('div', {}, label('secondary', side + '-secondary'), ui.secondary,
         ...ui.secondaryRunes.flatMap((s) => [el('label', {}, ''), s]),
         label('shards', ''), ...ui.shards)),
-    el('label', {class: 'check'}, ui.stacked, el('span', {'data-k': 'stacked'})), buffBox);
-  const right = el('div', {},
-    el('h3', {'data-k': 'items'}), el('div', {class: 'inventory'}, ...ui.slots.map((s) => el('div', {class: 'slot'}, s))),
+    el('label', {class: 'check'}, ui.stacked, el('span', {'data-k': 'stacked'})));
+  const optionsBox = el('details', {class: 'setup'}, el('summary', {}, el('span', {'data-k': 'setupOptions'}), ui.optionsValue),
+    label('skillOrder', side + '-priority'), ui.priority, ui.priorityNote,
+    label('currentHp', side + '-hp'), ui.hp, stacksWrap);
+  const left = el('div', {},
+    el('h3', {'data-k': 'items'}), el('div', {class: 'inventory'}, ...ui.slotBoxes.map((x) => x.box)),
     ui.cost, ...(side === 'you' ? [label('gold', side + '-gold'), ui.gold] : []), ui.notices,
     el('h3', {'data-k': 'stats'}), ui.statsView.node, ui.note);
+  const right = el('div', {}, el('h3', {'data-k': 'setup'}), runesBox, optionsBox, buffBox);
   const comboBox = el('div', {class: 'full'}, el('h3', {'data-k': 'combo'}), ui.comboList,
     el('div', {class: 'row combo-add'}, ui.addStep, ui.addButton, ui.resetButton));
   const removeButton = el('button', {type: 'button', class: 'remove-enemy'});
   removeButton.addEventListener('click', () => setEnemyShown(false));
   const head = side === 'enemy' ? el('div', {class: 'panel-head full'}, ui.title, removeButton) : ui.title;
-  const section = el('section', {class: 'panel', 'aria-labelledby': side + '-title'}, head, left, right, comboBox, ui.results);
+  const section = el('section', {class: 'panel', 'aria-labelledby': side + '-title'}, head, identity, left, right, comboBox, ui.results);
   container.append(section);
   ui.title.id = side + '-title';
   ui.slots.forEach((s, i) => s.setAttribute('aria-label', `${t('items')} ${i + 1}`));
@@ -315,6 +338,9 @@ function createPanel(container, side, onChange) {
     ui.gold.value = state.gold;
     if (ui.labels['gold' + side + '-gold']) ui.labels['gold' + side + '-gold'].textContent = t('goldInPocket');
     fillSelect(ui.priority, PRIORITIES.map((p) => ({value: p, label: p.split('').join(' > ')})), state.priority.join(''));
+    const usual = Engine.skillOrder(DATA, state.champ);
+    ui.priorityNote.textContent = usual.order.join('') !== state.priority.join('') ? t('skillOrderChanged', {order: usual.order.join(' > ')})
+      : usual.estimated ? t('skillOrderEstimated') : '';
 
     fillSelect(ui.champ, champs.slice().sort(byName).map((c) => ({value: c.id, label: nm(c.name)})), state.champ);
     ui.range.value = ui.number.value = state.level;
@@ -351,8 +377,16 @@ function createPanel(container, side, onChange) {
 
     ui.slots.forEach((s, i) => {
       fillSelect(s, itemOptions(i), state.items[i], t('empty'));
-      s.classList.toggle('filled', !!state.items[i]);
+      const x = ui.slotBoxes[i], id = state.items[i];
+      x.box.classList.toggle('filled', !!id);
+      x.img.hidden = !id; x.empty.hidden = !!id;
+      if (id) x.img.src = itemIcon(id);
     });
+    ui.portrait.src = champIcon(state.champ);
+    ui.champTitle.textContent = nm(DATA.champions[state.champ].title);
+    const keystone = state.runes.keystone ? runeName(state.runes.keystone) : '';
+    ui.runesValue.textContent = keystone;
+    ui.optionsValue.textContent = state.priority.join(' > ');
 
     const cost = Engine.buildCost(DATA, state.items);
     ui.cost.textContent = `${t('cost')}: ${fmt(cost, 0)} ${t('gold')}`;
@@ -799,6 +833,7 @@ function createItemsTab(section) {
   const statText = (k, v) => `+${fmt(v)}${k === 'as' ? '%' : ''} ${t('stat_' + k)}`;
   const link = (id) => {
     const b = el('button', {type: 'button', class: 'link', text: nm(DATA.items[id].name)});
+    b.prepend(icon(itemIcon(id)));
     b.addEventListener('click', () => open(id));
     return b;
   };
@@ -812,7 +847,7 @@ function createItemsTab(section) {
     if (!selected) return;
     const item = DATA.items[selected], rules = DATA.rules;
     const p = (text) => el('p', {text});
-    const parts = [el('h3', {text: nm(item.name)})];
+    const parts = [el('div', {class: 'card-head'}, icon(itemIcon(selected)), el('h3', {text: nm(item.name)}))];
     if (nm(item.plaintext)) parts.push(el('p', {class: 'note', text: nm(item.plaintext)}));
     const combine = item.from && item.from.length ? item.gold.base : null;
     parts.push(p(combine !== null ? t('itemCostCombine', {cost: fmt(item.gold.total, 0), combine: fmt(combine, 0)})
@@ -936,7 +971,7 @@ function createChampionsTab(section) {
   // The stats worth naming: the best one, and others giving at least a quarter of its damage.
   const top = (id) => { const s = scaleOf(id).stats; return s.filter((x) => x.gain >= s[0].gain / 4).slice(0, 3); };
   const scalesText = (id) => (scaleOf(id).stats.length ? top(id).map((x) => t('stat_' + x.stat)).join(', ') : '—');
-  const link = (id) => linkButton(nm(DATA.champions[id].name), () => open(id));
+  const link = (id) => champButton(id, () => open(id));
 
   // A simple first build (Engine.beginnerBuild), with a button that loads it into your panel.
   function beginnerBuild(id) {
@@ -983,7 +1018,8 @@ function createChampionsTab(section) {
     ui.card.hidden = !selected;
     if (!selected) return;
     const c = DATA.champions[selected], s = scaleOf(selected);
-    const parts = [el('h3', {text: nm(c.name)}), el('p', {class: 'note', text: nm(c.title)}),
+    const parts = [el('div', {class: 'card-head'}, icon(champIcon(selected), 'champ'),
+      el('div', {}, el('h3', {text: nm(c.name)}), el('p', {class: 'note', text: nm(c.title)}))),
       el('p', {text: `${t('champRole')}: ${roles(c)}`}), el('p', {text: `${t('champClass')}: ${classes(c)}`}),
       el('h4', {text: t('champScales')})];
     if ((c.tags || []).includes('Marksman')) parts.push(el('p', {text: t('champMarksman')}));
@@ -993,7 +1029,12 @@ function createChampionsTab(section) {
     const names = s.excluded.map((k) => (k === 'P' ? t('passive') : k));
     if (s.excluded.length && s.stats.length) parts.push(el('p', {class: 'notice', text: t('champExcluded', {spells: names.join(', ')})}));
     parts.push(el('p', {class: 'note', text: t('champScalesNote')}));
-    if (typeof GUIDE === 'object') parts.push(...beginnerBuild(selected), ...abilities(selected));
+    const order = Engine.skillOrder(DATA, selected);
+    parts.push(el('p', {}, el('strong', {text: t('skillOrder') + ': '}), t('skillOrderMax', {order: order.order.join(' > ')})
+      + (order.estimated ? ' ' + t('skillOrderEstimatedShort') : '')));
+    // Sections are blocks so the two-column layout never splits one (index.html).
+    parts.splice(1, parts.length - 1, el('div', {class: 'block'}, ...parts.slice(1)));
+    if (typeof GUIDE === 'object') parts.push(el('div', {class: 'block'}, ...beginnerBuild(selected)), el('div', {class: 'block'}, ...abilities(selected)));
     const openAs = (idx, who) => {
       const b = el('button', {type: 'button', text: t('openAs', {who: t(who)})});
       b.addEventListener('click', () => {
@@ -1068,7 +1109,7 @@ function createClassesTab(section) {
       .map(([p, n]) => `${t('role_' + p)} ${fmt(100 * n / roleTotal, 0)}%`).join(', ');
     const ranked = main.filter((id) => scaleOf(id).stats.length)
       .sort((a, b) => scaleOf(b).stats[0].gain - scaleOf(a).stats[0].gain);
-    const champLink = (id) => linkButton(nm(DATA.champions[id].name), () => championsTab && championsTab.open(id));
+    const champLink = (id) => champButton(id, () => championsTab && championsTab.open(id));
     const vs = (list) => el('ul', {}, ...list.map((x) => el('li', {}, tagLink(x.tag), ': ' + pick(x))));
     const picks = Engine.classItems(DATA, c.keyStats);
     const itemLine = (id) => el('li', {}, itemButton(id), ' ' + Object.entries(DATA.items[id].stats).filter(([k]) => c.keyStats[k])
@@ -1129,7 +1170,16 @@ const linkButton = (text, action) => {
   b.addEventListener('click', action);
   return b;
 };
-const itemButton = (id) => linkButton(nm(DATA.items[id].name), () => itemsTab && itemsTab.open(id));
+const itemButton = (id) => {
+  const b = linkButton(nm(DATA.items[id].name), () => itemsTab && itemsTab.open(id));
+  b.prepend(icon(itemIcon(id)));
+  return b;
+};
+const champButton = (id, action) => {
+  const b = linkButton(nm(DATA.champions[id].name), action);
+  b.prepend(icon(champIcon(id), 'champ'));
+  return b;
+};
 // Glossary words in a text become links to their definition (Glossary tab). Whole words only, any case.
 const glossaryWords = {};
 function glossaryNodes(text) {
@@ -1287,7 +1337,7 @@ let sourcesTab = null;
 
 // Tabs: the calculator (panels + advisor), the rankings and the champion optimizer. The choice is remembered.
 // Only tabs present in the page: a cached older index.html next to a newer app.js must not break the page.
-const TABS = ['calculator', 'rankings', 'optimize', 'items', 'champions', 'classes', 'guide', 'glossary', 'sources'].filter((id) => document.getElementById(id) && document.getElementById('tab-' + id));
+const TABS = ['calculator', 'rankings', 'optimize', 'champions', 'classes', 'items', 'guide', 'glossary', 'sources'].filter((id) => document.getElementById(id) && document.getElementById('tab-' + id));
 function showTab(name) {
   for (const [tab, panel] of TABS.map((x) => [x, x])) {
     const selected = tab === name;
@@ -1344,6 +1394,7 @@ function setEnemyShown(on) {
 
 function renderPage() {
   document.documentElement.lang = lang;
+  document.title = t('title');
   document.querySelectorAll('[data-t]').forEach((n) => { n.textContent = t(n.dataset.t); });
   document.querySelector('.patch').textContent = `${t('patch')} ${DATA.patch}`;
   document.getElementById('lang').textContent = t('switchLang');
@@ -1393,12 +1444,14 @@ if (TABS.includes('classes') && typeof GUIDE === 'object') classesTab = createCl
 if (TABS.includes('guide') && typeof GUIDE === 'object') guideTab = createGuideTab(document.getElementById('guide'));
 if (TABS.includes('glossary') && typeof GUIDE === 'object') glossaryTab = createGlossaryTab(document.getElementById('glossary'));
 if (TABS.includes('sources') && typeof GUIDE === 'object') sourcesTab = createSourcesTab(document.getElementById('sources'));
-TABS.forEach((name, i) => {
+const ROW = TABS.filter((name) => document.getElementById('tab-' + name).getAttribute('role') === 'tab'); // Sources is in the footer
+TABS.forEach((name) => {
   const tab = document.getElementById('tab-' + name);
   tab.addEventListener('click', () => showTab(name));
   tab.addEventListener('keydown', (e) => {
-    if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') {
-      const other = TABS[(i + (e.key === 'ArrowRight' ? 1 : TABS.length - 1)) % TABS.length];
+    const i = ROW.indexOf(name);
+    if (i >= 0 && (e.key === 'ArrowRight' || e.key === 'ArrowLeft')) {
+      const other = ROW[(i + (e.key === 'ArrowRight' ? 1 : ROW.length - 1)) % ROW.length];
       showTab(other);
       document.getElementById('tab-' + other).focus();
     }

@@ -338,3 +338,16 @@ test('matchup by level: 18 verdicts; a full build beats no items', () => {
   assert.ok(r.every((w) => ['you', 'them', 'even'].includes(w)));
   assert.equal(r[17], 'you');
 });
+
+test('skill orders: hand-written ones are used by default, the rest are estimated', () => {
+  for (const [id, o] of Object.entries(D.rules.skillOrders)) {
+    assert.ok(D.champions[id], id);
+    assert.deepEqual([...o].sort(), ['E', 'Q', 'W'], id);
+  }
+  assert.deepEqual(Engine.skillOrder(D, 'Garen'), {order: ['E', 'Q', 'W'], estimated: false});
+  for (const id of Object.keys(D.champions)) assert.equal(Engine.skillOrder(D, id).order.length, 3, id);
+  assert.ok(Engine.skillOrder(D, 'Locke').estimated);
+  // Garen maxes E first: at level 9 his E is rank 5 without any priority given.
+  const sel = {champ: 'Garen', level: 9, items: [], runes: null, stacked: false, stacks: 0};
+  assert.equal(Engine.spellDamage(D, {...sel, stats: Engine.championStats(D, sel)}, {stats: Engine.championStats(D, sel), currentHp: 2000}, 'E').rank, 5);
+});

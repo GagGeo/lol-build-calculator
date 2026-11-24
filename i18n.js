@@ -2,7 +2,7 @@
 const I18N = (() => {
   const LABELS = {
     en: {
-      title: 'LoL Build Calculator', patch: 'Patch', switchLang: 'Français', you: 'You',
+      title: 'Summoner\'s Notebook', patch: 'Patch', switchLang: 'Français', you: 'You',
       champion: 'Champion', level: 'Level', stacks: 'Stacks', runes: 'Runes', primary: 'Primary tree',
       keystone: 'Keystone', secondary: 'Secondary tree', shards: 'Stat shards', offense: 'Offense', flex: 'Flex',
       defense: 'Defense', stacked: 'Assume runes fully stacked', items: 'Items', none: '—', stats: 'Stats',
@@ -56,6 +56,10 @@ const I18N = (() => {
       classWeak: 'Weak against', classKeyStats: 'Key stats', classItems: 'Items that fit', classBoots: 'Boots:',
       classChamps: 'Champions whose abilities scale best', classChampGain: '+{gain} damage per 1000 gold of {stat}',
       classAllChamps: 'All champions in this class ({n})', classHideChamps: 'Hide champions',
+      navBuild: 'Build', navLearn: 'Learn', setup: 'Setup', setupOptions: 'Skill order and health',
+      skillOrderMax: 'max {order}', skillOrderEstimatedShort: '(estimated from ability damage: not checked by hand)',
+      skillOrderEstimated: 'Estimated from ability damage: this champion\'s usual order isn\'t written down yet.',
+      skillOrderChanged: 'Usual order: {order}.',
       itemBuildPath: 'Build order', buildCombine: 'Combine into {item}:', buildCost: '{cost} gold (total {total})',
       tabGlossary: 'Glossary', glossaryIntro: 'Words players and guides use without explaining them. Underlined words in Stats explained and Classes link here.',
       champBuild: 'Beginner build', champBuildStart: 'Start with', champBuildBoots: 'Boots:', champBuildCore: 'Then, in order:',
@@ -138,10 +142,10 @@ const I18N = (() => {
       stat_mpregen: 'Mana Regen (per 5s)', stat_range: 'Attack Range', stat_adaptive: 'Adaptive Force',
       shard_hpPerLevel: 'Health (10 per level)', empty: 'Empty', chooseChampion: 'Pick a champion',
       asNote: 'Attack speed: base and total in attacks per second, bonus in %.',
-      disclaimer: "LoL Build Calculator isn't endorsed by Riot Games and doesn't reflect the views or opinions of Riot Games or anyone officially involved in producing or managing Riot Games properties. Riot Games, and all associated properties are trademarks or registered trademarks of Riot Games, Inc.",
+      disclaimer: "Summoner's Notebook isn't endorsed by Riot Games and doesn't reflect the views or opinions of Riot Games or anyone officially involved in producing or managing Riot Games properties. Riot Games, and all associated properties are trademarks or registered trademarks of Riot Games, Inc.",
     },
     fr: {
-      title: 'LoL Build Calculator', patch: 'Patch', switchLang: 'English', you: 'Vous',
+      title: 'Carnet d\'invocateur', patch: 'Patch', switchLang: 'English', you: 'Vous',
       champion: 'Champion', level: 'Niveau', stacks: 'Cumuls', runes: 'Runes', primary: 'Arbre principal',
       keystone: 'Rune clé', secondary: 'Arbre secondaire', shards: 'Fragments', offense: 'Attaque', flex: 'Flexible',
       defense: 'Défense', stacked: 'Supposer les runes entièrement cumulées', items: 'Objets', none: '—',
@@ -198,6 +202,10 @@ const I18N = (() => {
       classWeak: 'Faible contre', classKeyStats: 'Stats clés', classItems: 'Objets qui lui vont', classBoots: 'Bottes :',
       classChamps: 'Champions dont les sorts évoluent le mieux', classChampGain: '+{gain} dégâts pour 1000 or de {stat}',
       classAllChamps: 'Tous les champions de cette classe ({n})', classHideChamps: 'Masquer les champions',
+      navBuild: 'Construire', navLearn: 'Apprendre', setup: 'Réglages', setupOptions: 'Ordre des sorts et PV',
+      skillOrderMax: 'monter {order}', skillOrderEstimatedShort: '(estimé d\'après les dégâts des sorts : pas vérifié à la main)',
+      skillOrderEstimated: 'Estimé d\'après les dégâts des sorts : l\'ordre habituel de ce champion n\'est pas encore noté.',
+      skillOrderChanged: 'Ordre habituel : {order}.',
       itemBuildPath: 'Ordre d\'achat', buildCombine: 'Assembler en {item} :', buildCost: '{cost} or (total {total})',
       tabGlossary: 'Lexique', glossaryIntro: 'Les mots que les joueurs et les guides emploient sans les expliquer. Les mots soulignés dans Les stats expliquées et Classes renvoient ici.',
       champBuild: 'Build pour débuter', champBuildStart: 'Commencer par', champBuildBoots: 'Bottes :', champBuildCore: 'Puis, dans l\'ordre :',
@@ -283,7 +291,7 @@ const I18N = (() => {
       stat_mpregen: 'Régénération de mana (par 5 s)', stat_range: 'Portée d\'attaque', stat_adaptive: 'Force adaptative',
       shard_hpPerLevel: 'Points de vie (10 par niveau)', empty: 'Vide', chooseChampion: 'Choisissez un champion',
       asNote: 'Vitesse d\'attaque : base et total en attaques par seconde, bonus en %.',
-      disclaimer: "LoL Build Calculator n'est pas approuvé par Riot Games et ne reflète pas les opinions de Riot Games ni de toute personne officiellement impliquée dans la production ou la gestion des propriétés de Riot Games. Riot Games et toutes les propriétés associées sont des marques commerciales ou des marques déposées de Riot Games, Inc.",
+      disclaimer: "Carnet d'invocateur n'est pas approuvé par Riot Games et ne reflète pas les opinions de Riot Games ni de toute personne officiellement impliquée dans la production ou la gestion des propriétés de Riot Games. Riot Games et toutes les propriétés associées sont des marques commerciales ou des marques déposées de Riot Games, Inc.",
     },
   };
 

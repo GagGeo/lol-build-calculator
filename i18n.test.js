@@ -20,7 +20,7 @@ test('t falls back to the key, name picks the language', () => {
   assert.equal(I18N.name({en: 'Only English'}, 'fr'), 'Only English');
 });
 test('disclaimer is exact', () =>
-  assert.ok(I18N.LABELS.en.disclaimer.startsWith("LoL Build Calculator isn't endorsed by Riot Games")));
+  assert.ok(I18N.LABELS.en.disclaimer.startsWith("Summoner's Notebook isn't endorsed by Riot Games")));
 test('stage 2 labels exist in both languages', () => {
   for (const k of ['enemy', 'currentHp', 'skillOrder', 'combo', 'autos', 'notLearned', 'kills', 'hpLeft', 'damageTo',
                    'noDamage', 'excludedNote', 'customRanks', 'type_physical', 'type_magic', 'type_true', 'addStep',

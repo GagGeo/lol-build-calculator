@@ -368,6 +368,36 @@ const Engine = (() => {
     return ranks;
   }
 
+  // The order a champion maxes its basic abilities: rules.skillOrders (written by hand), else an estimate: the
+  // order whose abilities deal the most damage from level 7 to 13, where the order matters most. Damage alone
+  // misses utility, cooldowns and basic-attack synergy, so the estimate is labelled as such in the page.
+  const ORDERS = ['QWE', 'QEW', 'WQE', 'WEQ', 'EQW', 'EWQ'];
+  const orderCache = new WeakMap();
+  function skillOrder(data, champId) {
+    const hand = (data.rules.skillOrders || {})[champId];
+    if (hand) return {order: hand.split(''), estimated: false};
+    if (!orderCache.has(data)) orderCache.set(data, {});
+    const cache = orderCache.get(data);
+    if (!cache[champId]) {
+      const target = {stats: {base: {hp: 3000}, bonus: {hp: 0}, total: {hp: 3000, armor: 0, mr: 0}}, currentHp: 3000};
+      const score = (order) => {
+        let sum = 0;
+        for (let level = 7; level <= 13; level++) {
+          const sel = {champ: champId, level, items: [], runes: null, stacked: false, stacks: 0, priority: order.split('')};
+          const side = {...sel, stats: championStats(data, sel)};
+          for (const key of ['Q', 'W', 'E']) {
+            const r = spellDamage(data, side, target, key);
+            if (r.learned && !r.noDamage && !r.unsupported.length) sum += r.damage;
+          }
+        }
+        return sum;
+      };
+      const scored = ORDERS.map((o) => [o, score(o)]);
+      cache[champId] = scored.reduce((best, x) => (x[1] > best[1] + 1e-6 ? x : best))[0]; // ties keep Q > W > E
+    }
+    return {order: cache[champId].split(''), estimated: true};
+  }
+
   // --- Stage 2: damage ----------------------------------------------------------------------------
   // Damage after resistances. Order: shred (% reduction), % penetration, flat penetration/lethality (flat).
   function mitigate(raw, type, attacker, target, shred = {armor: 0, mr: 0}) {
@@ -395,7 +425,7 @@ const Engine = (() => {
     const champ = data.champions[side.champ];
     const spell = champ.spells.find((s) => s.key === key);
     const rank = key === 'P' ? (clampLevel(side.level) >= ((data.rules.passiveFromLevel || {})[side.champ] || 1) ? 1 : 0)
-      : skillRanks(champ, side.level, side.priority)[key];
+      : skillRanks(champ, side.level, side.priority || skillOrder(data, side.champ).order)[key];
     if (!rank) return {learned: false, rank: 0, raw: 0, damage: 0, type: null, unsupported: []};
     // A spell whose description or game data is missing can't be trusted, even if some lines were read.
     const unsupported = spell.flags.filter((f) => ['unparsed_tooltip', 'no_tooltip', 'no_cdragon_spell'].includes(f));
@@ -449,7 +479,7 @@ const Engine = (() => {
     const spell = champ.spells.find((s) => s.key === key);
     const none = {heal: 0, unsupported: []};
     const rank = key === 'P' ? (clampLevel(side.level) >= ((data.rules.passiveFromLevel || {})[side.champ] || 1) ? 1 : 0)
-      : skillRanks(champ, side.level, side.priority)[key];
+      : skillRanks(champ, side.level, side.priority || skillOrder(data, side.champ).order)[key];
     const line = rank && (spell.heals || [])[0];
     if (!line) return none;
     if (((data.rules.spellHealsNotInCombo || {})[`${side.champ} ${key}`])) return {...none, skipped: true};
@@ -1159,7 +1189,7 @@ const Engine = (() => {
     return {value, efficiency: item.gold.total > 0 ? value / item.gold.total : null, unpriced};
   }
 
-  return {RANKABLE_STATS, bestBuilds, bestRunePage, rankStat, optimizeChampion, statBreakdown, statGoldPrices, goldEfficiency, adviseBuys, rankBuys, purchase, growth, capMoveSpeed, clampLevel, championStats, ultRank, validateBuild, allowedItems, pruneBuild,
+  return {RANKABLE_STATS, bestBuilds, bestRunePage, rankStat, optimizeChampion, statBreakdown, statGoldPrices, goldEfficiency, adviseBuys, rankBuys, purchase, growth, capMoveSpeed, clampLevel, championStats, ultRank, skillOrder, validateBuild, allowedItems, pruneBuild,
           validateRunePage, normalizeRunePage, buildCost, goldWarning, evalCalc, skillRanks,
           mitigate, autoAttack, spellDamage, runCombo, counterAdvice, kitScaling, classItems, beginnerBuild, spellScaling, matchupByLevel, buildPath, DEFAULT_COMBO, defaultCombo, clampPct, spellHeal};
 })();

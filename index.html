@@ -3,20 +3,24 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>LoL Build Calculator</title>
+<title>Summoner's Notebook</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Semi+Condensed:wght@400;500;600;700&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Semi+Condensed:wght@400;500;600;700&family=Marcellus&display=swap">
 <style>
+  /* League's own palette, one job per color: gold = gold and totals, hextech cyan = anything you can click. */
   :root {
-    --rift: #0f2233;      /* page */
-    --deep: #0a1824;      /* wells: slots, inputs */
-    --panel: #15304a;     /* panel surface */
-    --line: #2a4a66;      /* borders */
-    --text: #e7e1d2;      /* parchment text */
-    --muted: #9fb0bf;
-    --gold: #c9a24d;      /* prices, totals */
-    --teal: #4fb3ad;      /* focus, interactive */
-    --warn: #e58a5a;
+    --rift: #0b1622;      /* page */
+    --deep: #071019;      /* wells: slots, inputs */
+    --panel: #10243a;     /* panel surface */
+    --raised: #163049;    /* open sections, hovered rows */
+    --line: #23405b;      /* borders */
+    --text: #f0e6d2;      /* parchment text */
+    --muted: #a3b1bd;
+    --gold: #c8aa6e;      /* prices, totals, champion rings */
+    --gold-bright: #f0d38f;
+    --teal: #0ac8b9;      /* hextech: links, buttons, focus */
+    --warn: #e0745a;
+    --display: "Marcellus", "Times New Roman", serif;
     color-scheme: dark;
   }
   * { box-sizing: border-box; }
@@ -26,7 +30,7 @@
   }
   header, main, footer { max-width: 1200px; margin: 0 auto; padding: 0 16px; }
   header { display: flex; align-items: baseline; gap: 16px; padding-top: 20px; padding-bottom: 12px; flex-wrap: wrap; }
-  h1 { font-size: 28px; font-weight: 700; margin: 0; letter-spacing: .01em; }
+  h1 { font: 400 32px/1.1 var(--display); margin: 0; letter-spacing: .02em; color: var(--gold-bright); }
   .patch { color: var(--muted); }
   header button { margin-left: auto; }
   button, select, input {
@@ -38,32 +42,55 @@
   select { width: 100%; min-width: 0; }
 
   [hidden] { display: none !important; } /* .panel's display: grid would otherwise show hidden tab panels */
-  .tabs { max-width: 1200px; margin: 0 auto 12px; padding: 0 16px; display: flex; gap: 8px; flex-wrap: wrap; }
-  .tabs button, .subtabs button { color: var(--muted); border-color: var(--line); }
-  .tabs button[aria-selected="true"], .subtabs button[aria-selected="true"] { color: var(--gold); border-color: var(--gold); font-weight: 600; }
+  .tabs { max-width: 1200px; margin: 0 auto 16px; padding: 0 16px; display: flex; gap: 6px 28px; flex-wrap: wrap;
+    border-bottom: 1px solid var(--line); }
+  .tab-group { display: flex; align-items: flex-end; gap: 2px 14px; flex-wrap: wrap; }
+  .tab-group-name { color: var(--muted); font-size: 13px; align-self: center; margin-right: 2px; }
+  .tabs button { border: 0; border-bottom: 2px solid transparent; border-radius: 0; padding: 8px 2px; color: var(--muted);
+    font-size: 17px; margin-bottom: -1px; }
+  .tabs button:hover { color: var(--text); }
+  .tabs button[aria-selected="true"] { color: var(--text); border-bottom-color: var(--gold); }
+  .subtabs button { color: var(--muted); border-color: var(--line); }
+  .subtabs button[aria-selected="true"] { color: var(--text); border-color: var(--gold); font-weight: 600; }
   .rank-form { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 0 14px; }
   .rank-form input { width: 100%; }
   #champions td { text-align: left; }
+  /* A champion card reads in two columns on wide screens; a heading never ends a column. */
+  @media (min-width: 1000px) {
+    #champions article.item-card { columns: 2; column-gap: 40px; }
+    #champions article.item-card > .card-head { column-span: all; margin-bottom: 8px; }
+    #champions article.item-card .block { break-inside: avoid; }
+  }
+  .item-card h4 { font: 400 19px/1.3 var(--display); color: var(--gold-bright); margin: 16px 0 6px; }
   #panels { display: grid; gap: 16px; }
   /* Only your panel: one wide panel laid out in two columns, as in the original calculator. */
   #panels.solo { grid-template-columns: minmax(0, 1fr); }
   @media (min-width: 1100px) { #panels.solo .panel { grid-template-columns: minmax(0, 1fr) minmax(0, 1.1fr); } }
   .add-enemy { margin-top: 12px; }
   .panel-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
-  .panel-head h2 { margin: 0; font-size: 22px; font-weight: 600; }
+  .panel-head h2 { margin: 0; }
   .open-buttons { display: flex; flex-wrap: wrap; gap: 6px; }
   #advisor { margin-top: 16px; }
   .not-scored { margin: 0; padding-left: 1.2em; color: var(--muted); }
   #advisor table.damage td:nth-child(2), #advisor table.damage td:nth-child(3), #advisor table.damage td:nth-child(5) { white-space: nowrap; }
   .table-scroll { overflow-x: auto; } /* wide tables scroll inside themselves on phones */
-  button.link { background: none; border: none; padding: 0; color: var(--gold); text-decoration: underline; cursor: pointer; font: inherit; text-align: left; }
+  button.link { background: none; border: none; padding: 0; color: var(--teal); text-decoration: underline;
+    text-decoration-color: rgba(10, 200, 185, .4); text-underline-offset: 2px; cursor: pointer; font: inherit; text-align: left; }
+  button.link:hover { text-decoration-color: currentColor; }
+  /* Item and champion icons from Data Dragon, next to their names. */
+  img.icon { width: 22px; height: 22px; border-radius: 3px; vertical-align: -5px; margin-right: 5px; border: 1px solid var(--line); }
+  img.icon.champ { border-radius: 50%; border-color: var(--gold); }
+  .card-head { display: flex; align-items: center; gap: 14px; }
+  .card-head img { width: 56px; height: 56px; border-radius: 6px; border: 1px solid var(--gold); }
+  .card-head img.champ { border-radius: 50%; border-width: 2px; }
+  .card-head h3 { margin: 0; }
   .details-toggle { margin-bottom: 8px; }
   .opt-items { list-style: none; padding: 0; margin: 8px 0; display: grid; gap: 4px; }
   .opt-items li { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
   .item-card { border: 1px solid var(--line); border-radius: 8px; padding: 12px 16px; margin-bottom: 16px; }
-  .item-card h3 { margin-top: 0; }
+  .item-card h3 { margin-top: 0; font: 400 24px/1.2 var(--display); color: var(--text); }
   .item-desc { white-space: pre-line; }
-  a { color: var(--gold); }
+  a { color: var(--teal); }
   .subtabs { display: flex; flex-wrap: wrap; gap: 6px; margin: 4px 0 14px; }
   .guide-cards { display: grid; gap: 12px; grid-template-columns: repeat(auto-fill, minmax(min(100%, 460px), 1fr)); }
   .guide-cards .item-card { margin: 0; scroll-margin-top: 12px; }
@@ -77,7 +104,7 @@
   .guide-bar { height: 10px; background: var(--deep); border-radius: 3px; overflow: hidden; }
   .guide-bar span { display: block; height: 100%; background: var(--teal); }
   .sources section + section { margin-top: 8px; }
-  .guide-cards h4 { margin: 0 0 4px; font-size: 19px; font-weight: 600; }
+  .guide-cards h4 { margin: 0 0 4px; font: 400 21px/1.25 var(--display); }
   .guide-label { margin: 8px 0 2px; color: var(--muted); font-weight: 600; }
   .guide-items { columns: 2 14em; column-gap: 20px; font-size: 15px; }
   .guide-items li { break-inside: avoid; }
@@ -97,7 +124,7 @@
   .combo-add select { flex: 1; min-width: 10em; }
   table.damage td:last-child { text-align: left; }
   .summary { font-size: 19px; font-weight: 600; color: var(--gold); margin: 10px 0 0; }
-  .panel h2 { grid-column: 1 / -1; margin: 0; font-size: 22px; font-weight: 600; }
+  .panel h2 { grid-column: 1 / -1; margin: 0; font: 400 26px/1.2 var(--display); color: var(--text); }
   h3 { font-size: 17px; font-weight: 600; margin: 18px 0 8px; color: var(--muted); }
   h3:first-child { margin-top: 0; }
   label { display: block; color: var(--muted); font-size: 15px; margin: 8px 0 3px; }
@@ -107,17 +134,30 @@
   .check { display: flex; gap: 8px; align-items: center; color: var(--text); margin-top: 12px; }
   .check input { accent-color: var(--teal); width: 18px; height: 18px; }
   .runes-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0 12px; }
-  .buffs { margin-top: 12px; }
-  .buffs summary { cursor: pointer; color: var(--gold); font-weight: 600; }
+  /* Setup sections you open when you need them (runes, options, buffs). */
+  details.setup { border: 1px solid var(--line); border-radius: 6px; padding: 0 12px; background: var(--deep); }
+  details.setup + details.setup { margin-top: 8px; }
+  details.setup[open] { background: var(--raised); padding-bottom: 12px; }
+  details.setup summary { cursor: pointer; padding: 10px 0; color: var(--text); font-weight: 600; }
+  details.setup summary .summary-value { color: var(--muted); font-weight: 400; margin-left: 6px; }
   .drakes { display: grid; grid-template-columns: repeat(4, 1fr); gap: 0 8px; }
 
-  /* The inventory: six slots in two rows, like the in-game item bar. */
+  /* The identity strip: portrait in a gold ring, champion, level. */
+  .identity { display: grid; grid-template-columns: 84px minmax(0, 1fr); gap: 4px 16px; align-items: center; }
+  .portrait { width: 84px; height: 84px; border-radius: 50%; border: 3px solid var(--gold); background: var(--deep);
+    grid-row: span 3; object-fit: cover; }
+  .identity select.champ-select { font: 400 26px/1.2 var(--display); background: transparent; border: 0;
+    border-bottom: 1px solid var(--line); border-radius: 0; padding: 2px 0; }
+  .identity .champ-title { color: var(--muted); margin: 0; }
+  .identity label { margin: 0; }
+  /* The inventory: six square-icon slots in two rows, like the in-game item bar. */
   .inventory { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
-  .slot select {
-    height: 64px; background: var(--deep); border: 1px solid var(--line); border-radius: 6px;
-    white-space: normal; font-weight: 500; padding: 6px;
-  }
-  .slot select.filled { border-color: var(--gold); }
+  .slot { display: grid; grid-template-columns: 48px minmax(0, 1fr); align-items: center; gap: 8px; padding: 6px;
+    background: var(--deep); border: 1px solid var(--line); border-radius: 6px; }
+  .slot.filled { border-color: var(--gold); }
+  .slot img, .slot .empty-icon { width: 48px; height: 48px; border-radius: 4px; }
+  .slot .empty-icon { border: 1px dashed var(--line); }
+  .slot select { border: 0; background: transparent; padding: 2px 0; white-space: normal; font-weight: 500; }
   .cost { margin-top: 10px; font-size: 20px; font-weight: 600; color: var(--gold); font-variant-numeric: tabular-nums; }
   .notice { margin: 8px 0 0; color: var(--warn); }
   .notice:empty { display: none; }
@@ -126,34 +166,47 @@
   th, td { padding: 5px 6px; text-align: right; border-bottom: 1px solid var(--line); }
   th:first-child, td:first-child { text-align: left; }
   th { color: var(--muted); font-weight: 500; }
-  td.total { color: var(--gold); font-weight: 600; }
+  td.total { color: var(--gold-bright); font-weight: 600; font-size: 18px; }
   .note { color: var(--muted); font-size: 14px; margin: 6px 0 0; }
 
-  footer { color: var(--muted); font-size: 13px; padding-top: 24px; padding-bottom: 32px; max-width: 80ch; }
+  footer { color: var(--muted); font-size: 13px; padding-top: 24px; padding-bottom: 32px; }
+  footer p { max-width: 80ch; margin: 0 0 8px; }
+  footer button { border: 0; padding: 0; color: var(--teal); text-decoration: underline; background: none; }
 
   @media (max-width: 760px) {
     .panel { grid-template-columns: minmax(0, 1fr); }
-    h1 { font-size: 24px; }
+    h1 { font-size: 26px; }
+    .inventory { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .identity { grid-template-columns: 64px minmax(0, 1fr); }
+    .tabs, .tab-group { flex-wrap: nowrap; }
+    .tabs { overflow-x: auto; scrollbar-width: none; }
+    .tabs button { white-space: nowrap; font-size: 16px; }
+    .portrait { width: 64px; height: 64px; }
   }
   @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
 </style>
 </head>
 <body>
 <header>
-  <h1 data-t="title">LoL Build Calculator</h1>
+  <h1 data-t="title">Summoner's Notebook</h1>
   <span class="patch"></span>
   <button type="button" id="lang"></button>
 </header>
-<nav class="tabs" role="tablist" aria-label="LoL Build Calculator">
-  <button type="button" role="tab" id="tab-calculator" aria-controls="calculator"></button>
-  <button type="button" role="tab" id="tab-rankings" aria-controls="rankings"></button>
-  <button type="button" role="tab" id="tab-optimize" aria-controls="optimize"></button>
-  <button type="button" role="tab" id="tab-items" aria-controls="items"></button>
-  <button type="button" role="tab" id="tab-champions" aria-controls="champions"></button>
-  <button type="button" role="tab" id="tab-classes" aria-controls="classes"></button>
-  <button type="button" role="tab" id="tab-guide" aria-controls="guide"></button>
-  <button type="button" role="tab" id="tab-glossary" aria-controls="glossary"></button>
-  <button type="button" role="tab" id="tab-sources" aria-controls="sources"></button>
+<nav class="tabs" role="tablist" aria-label="Summoner's Notebook">
+  <div class="tab-group" role="none">
+    <span class="tab-group-name" data-t="navBuild" aria-hidden="true"></span>
+    <button type="button" role="tab" id="tab-calculator" aria-controls="calculator"></button>
+    <button type="button" role="tab" id="tab-rankings" aria-controls="rankings"></button>
+    <button type="button" role="tab" id="tab-optimize" aria-controls="optimize"></button>
+  </div>
+  <div class="tab-group" role="none">
+    <span class="tab-group-name" data-t="navLearn" aria-hidden="true"></span>
+    <button type="button" role="tab" id="tab-champions" aria-controls="champions"></button>
+    <button type="button" role="tab" id="tab-classes" aria-controls="classes"></button>
+    <button type="button" role="tab" id="tab-items" aria-controls="items"></button>
+    <button type="button" role="tab" id="tab-guide" aria-controls="guide"></button>
+    <button type="button" role="tab" id="tab-glossary" aria-controls="glossary"></button>
+  </div>
 </nav>
 <main>
   <div id="calculator" role="tabpanel" aria-labelledby="tab-calculator">
@@ -169,11 +222,14 @@
   <section id="glossary" class="panel" role="tabpanel" aria-labelledby="tab-glossary" hidden></section>
   <section id="sources" class="panel" role="tabpanel" aria-labelledby="tab-sources" hidden></section>
 </main>
-<footer data-t="disclaimer"></footer>
-<script src="data.js?v=2e57ad5861"></script>
-<script src="engine.js?v=f48bfd8abe"></script>
+<footer>
+  <p data-t="disclaimer"></p>
+  <button type="button" id="tab-sources" aria-controls="sources"></button>
+</footer>
+<script src="data.js?v=b9aeecfe89"></script>
+<script src="engine.js?v=863bc2b969"></script>
 <script src="guide.js?v=8d7fca2d3f"></script>
-<script src="i18n.js?v=e2f614b02e"></script>
-<script src="app.js?v=f543266fe8"></script>
+<script src="i18n.js?v=065add1598"></script>
+<script src="app.js?v=8ff893be4b"></script>
 </body>
 </html>

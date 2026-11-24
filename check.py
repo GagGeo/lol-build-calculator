@@ -54,7 +54,7 @@ if R.get("rulesCheckedForPatch") != D["patch"]:
     ruled_items = (set(R["itemStatPassives"]) | set(R["itemStatPassivesUnknown"]) | set(R.get("itemDamage", {}))
                    | set(R.get("advisorNotScored", [])))
     ruled_champs = (set(R["stackers"]) | set(R.get("championStatsUnknown", [])) | set(R.get("championPassiveStats", {}))
-                    | set(R.get("passiveFromLevel", {})))
+                    | set(R.get("passiveFromLevel", {})) | set(R.get("skillOrders", {})))
     stale = ([f"item {i} {D['items'][i]['name']['en']}" for i in changed.get("item", []) if i in ruled_items]
              + [f"rune {r} {D['runes']['byId'][r]['name']['en']}" for r in changed.get("rune", []) if r in R["runeStats"] or r in R.get("runeDamage", {})]
              + [f"champion {c}" for c in changed.get("champion", []) if c in ruled_champs])

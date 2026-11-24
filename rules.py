@@ -288,6 +288,32 @@ RULES = {
         {"id": "chemtech", "group": "drake", "max": 4, "add": {"tenacity": 6, "hsp": 6}},
         {"id": "cloudSoul", "add": {"msPct": 15}},
     ],
+    # Usual order to max the basic abilities (first, second, third), as commonly played; written by hand
+    # 2026-11-24. It is the default "Skill order" everywhere damage is computed. Champions not listed get an
+    # estimate from their abilities' damage (Engine.skillOrder, shown as "estimated"): add them when you know.
+    "skillOrders": {
+        "Aatrox": "QEW", "Ahri": "QWE", "Akali": "QEW", "Akshan": "QEW", "Alistar": "QWE", "Amumu": "EQW",
+        "Anivia": "EQW", "Annie": "QWE", "Ashe": "WQE", "AurelionSol": "QEW", "Aurora": "QEW", "Azir": "QWE",
+        "Bard": "QWE", "Belveth": "QEW", "Blitzcrank": "QEW", "Brand": "WQE", "Braum": "QEW", "Caitlyn": "QWE",
+        "Camille": "QEW", "Cassiopeia": "EQW", "Chogath": "QEW", "Corki": "QEW", "Darius": "QEW", "Diana": "QWE",
+        "DrMundo": "QEW", "Draven": "QWE", "Ekko": "QEW", "Elise": "QWE", "Evelynn": "QEW", "Ezreal": "QEW",
+        "Fiora": "QEW", "Galio": "QEW", "Gangplank": "QEW", "Garen": "EQW", "Gnar": "QWE", "Gragas": "QEW",
+        "Graves": "QEW", "Gwen": "QEW", "Hecarim": "QWE", "Hwei": "QEW", "Illaoi": "QEW", "Irelia": "QEW",
+        "Janna": "EWQ", "JarvanIV": "QEW", "Jayce": "QWE", "Jhin": "QWE", "Jinx": "QWE", "Kaisa": "QEW",
+        "Kalista": "EQW", "Karma": "QEW", "Karthus": "QEW", "Katarina": "QEW", "Kayle": "EQW", "Kayn": "QWE",
+        "Kennen": "QWE", "Khazix": "QWE", "Kled": "QWE", "KogMaw": "WQE", "Leblanc": "QWE", "LeeSin": "QWE",
+        "Leona": "WEQ", "Lillia": "QWE", "Lissandra": "QWE", "Lucian": "QEW", "Lulu": "EQW", "Lux": "EQW",
+        "Malphite": "QEW", "Malzahar": "EQW", "MasterYi": "QEW", "MissFortune": "QEW", "Mordekaiser": "QEW",
+        "Morgana": "QWE", "Nami": "WEQ", "Nasus": "QEW", "Neeko": "QEW", "Nidalee": "QEW", "Nilah": "QEW",
+        "Nocturne": "QEW", "Nunu": "QEW", "Olaf": "QEW", "Orianna": "QWE", "Ornn": "QWE", "Pantheon": "QEW",
+        "Poppy": "QEW", "Pyke": "QEW", "Quinn": "QEW", "Rammus": "QWE", "Renekton": "QEW", "Rengar": "QWE",
+        "Riven": "QEW", "Rumble": "QEW", "Ryze": "QEW", "Samira": "QEW", "Senna": "QWE", "Seraphine": "QEW",
+        "Sett": "QWE", "Shaco": "EQW", "Shen": "QEW", "Singed": "QEW", "Sivir": "QWE", "Sona": "QWE",
+        "Sylas": "QWE", "Syndra": "QWE", "Talon": "WQE", "Teemo": "EQW", "Thresh": "QEW", "Tristana": "EQW",
+        "Tryndamere": "EQW", "TwistedFate": "QWE", "Twitch": "EQW", "Varus": "QEW", "Vayne": "QWE", "Veigar": "QWE",
+        "Vex": "QEW", "Vi": "QEW", "Viego": "QEW", "Viktor": "EQW", "Vladimir": "QEW", "Xerath": "QWE",
+        "Yasuo": "QEW", "Yone": "QWE", "Yorick": "QEW", "Zed": "QEW", "Ziggs": "QEW", "Zilean": "QWE",
+    },
     "stackers": {
         "Veigar": {"ap": 1},
         "Thresh": {"armor": 1, "ap": 1},
