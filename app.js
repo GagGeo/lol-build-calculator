@@ -1039,11 +1039,13 @@ function createChampionsTab(section) {
   const ROLES = ['TOP', 'JUNGLE', 'MIDDLE', 'BOTTOM', 'SUPPORT'];
   const ui = {
     title: el('h2', {id: 'champions-title'}), search: el('input', {type: 'search', id: 'champs-search'}),
-    role: el('select', {id: 'champs-role'}), labels: {}, card: el('article', {class: 'item-card', tabindex: -1}),
+    role: el('select', {id: 'champs-role'}), tag: el('select', {id: 'champs-class'}), scales: el('select', {id: 'champs-scales'}),
+    labels: {}, card: el('article', {class: 'item-card', tabindex: -1}),
     count: el('p', {class: 'note'}), table: el('table', {class: 'damage'}), note: el('p', {class: 'note'}),
   };
   const field = (key, input) => el('div', {}, (ui.labels[key] = el('label', {for: input.id})), input);
-  section.append(ui.title, ui.card, el('div', {class: 'rank-form'}, field('itemsSearch', ui.search), field('champRole', ui.role)),
+  section.append(ui.title, ui.card, el('div', {class: 'rank-form'}, field('itemsSearch', ui.search), field('champRole', ui.role),
+    field('champClass', ui.tag), field('champScales', ui.scales)),
     ui.count, el('div', {class: 'table-scroll'}, ui.table), ui.note);
   const roles = (c) => (c.positions || []).map((p) => t('role_' + p)).join(', ') || t('roleUnknown');
   const classes = (c) => (c.tags || []).map((x) => t('tag_' + x)).join(', ');
@@ -1140,10 +1142,18 @@ function createChampionsTab(section) {
     for (const [k, node] of Object.entries(ui.labels)) node.textContent = t(k);
     ui.search.placeholder = t('champSearchHint');
     fillSelect(ui.role, [{value: '', label: t('champAllRoles')}, ...ROLES.map((r) => ({value: r, label: t('role_' + r)}))], ui.role.value);
+    const allIds = Object.keys(DATA.champions);
+    const tags = [...new Set(allIds.flatMap((id) => DATA.champions[id].tags || []))].sort((a, b) => t('tag_' + a).localeCompare(t('tag_' + b), lang));
+    fillSelect(ui.tag, [{value: '', label: t('champAllClasses')}, ...tags.map((x) => ({value: x, label: t('tag_' + x)}))], ui.tag.value);
+    // Only the stats some champion's column shows, in the stats table's order.
+    const shown = new Set(allIds.flatMap((id) => (scaleOf(id).stats.length ? top(id).map((x) => x.stat) : [])));
+    fillSelect(ui.scales, [{value: '', label: t('champAnyStat')}, ...STAT_ORDER.filter((k) => shown.has(k)).map((k) => ({value: k, label: t('stat_' + k)}))], ui.scales.value);
     const query = ui.search.value.trim().toLowerCase();
-    const ids = Object.keys(DATA.champions).filter((id) => {
+    const ids = allIds.filter((id) => {
       const c = DATA.champions[id];
-      return (!query || nm(c.name).toLowerCase().includes(query)) && (!ui.role.value || (c.positions || []).includes(ui.role.value));
+      return (!query || nm(c.name).toLowerCase().includes(query)) && (!ui.role.value || (c.positions || []).includes(ui.role.value))
+        && (!ui.tag.value || (c.tags || []).includes(ui.tag.value))
+        && (!ui.scales.value || (scaleOf(id).stats.length > 0 && top(id).some((x) => x.stat === ui.scales.value)));
     }).sort((a, b) => byName(DATA.champions[a], DATA.champions[b]));
     ui.count.textContent = t('champsCount', {n: ids.length});
     const head = el('thead', {}, el('tr', {}, ...['champion', 'champRole', 'champClass', 'champScales']
@@ -1163,7 +1173,7 @@ function createChampionsTab(section) {
     ui.card.scrollIntoView({behavior: 'smooth', block: 'start'});
     ui.card.focus({preventScroll: true});
   }
-  ui.role.addEventListener('change', render);
+  for (const s of [ui.role, ui.tag, ui.scales]) s.addEventListener('change', render);
   ui.search.addEventListener('input', render);
   render();
   return {setLang: render, open: (id) => { if (TABS.includes('champions')) showTab('champions'); open(id); }};
