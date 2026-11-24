@@ -44,7 +44,7 @@ function createStatsView() {
     const breakdown = detailed ? Engine.statBreakdown(DATA, sel) : null;
     const s = breakdown ? breakdown.stats : Engine.championStats(DATA, sel);
     const cols = breakdown ? breakdown.columns.filter((c) => c.kind === 'item' || Object.keys(c.values).length) : [];
-    const colName = (c) => (c.kind === 'item' ? nm(DATA.items[c.id].name) : t(c.kind === 'runes' ? 'runes' : 'champion'));
+    const colName = (c) => (c.kind === 'item' ? nm(DATA.items[c.id].name) : t(c.kind === 'champion' ? 'champion' : c.kind));
     const head = el('tr', {}, ...[t('stat'), t('base'), ...(breakdown ? cols.map(colName) : [t('bonus')]), t('total')]
       .map((text) => el('th', {scope: 'col', text})));
     // Mana only means something for mana users; energy users get it relabelled; other resources are hidden.
@@ -98,7 +98,7 @@ function createPanel(container, side, onChange) {
   const champs = Object.values(DATA.champions);
   const firstChamp = champs.slice().sort(byName)[side === 'you' ? 0 : 1].id;
   const state = {
-    champ: firstChamp, level: 1, stacks: 0, stacked: false,
+    champ: firstChamp, level: 1, stacks: 0, stacked: false, buffs: {},
     items: [null, null, null, null, null, null],
     runes: Engine.normalizeRunePage(DATA, {}),
     currentHpPct: 100, priority: ['Q', 'W', 'E'], combo: Engine.defaultCombo(DATA, firstChamp), gold: 0,
@@ -135,6 +135,53 @@ function createPanel(container, side, onChange) {
   const label = (key, forId) => (ui.labels[key + forId] = el('label', forId ? {for: forId} : {}));
   const stacksWrap = el('div', {}, label('stacks', side + '-stacks'), ui.stacks);
 
+  // Temporary buffs (rules.buffs): state.buffs maps a buff id to 1, its drake stacks or the Baron minute.
+  const buffDefs = DATA.rules.buffs || [];
+  const elixirs = buffDefs.filter((b) => b.group === 'elixir'), drakes = buffDefs.filter((b) => b.group === 'drake');
+  const baron = buffDefs.find((b) => b.byMinute);
+  const buffUi = {
+    summary: el('summary'), elixir: el('select', {id: side + '-elixir'}), baron: el('select', {id: side + '-baron'}),
+    checks: buffDefs.filter((b) => !b.group && !b.byMinute).map((b) => ({b, input: el('input', {type: 'checkbox'}), text: el('span')})),
+    drakes: drakes.map((b) => ({b, input: el('input', {type: 'number', min: 0, max: b.max, step: 1, id: `${side}-buff-${b.id}`})})),
+    drakesTitle: el('p', {class: 'guide-label'}), note: el('p', {class: 'note'}),
+  };
+  const buffBox = el('details', {class: 'buffs'}, buffUi.summary,
+    label('buffElixir', side + '-elixir'), buffUi.elixir,
+    ...(baron ? [label('buffBaron', side + '-baron'), buffUi.baron] : []),
+    ...buffUi.checks.map((c) => el('label', {class: 'check'}, c.input, c.text)),
+    buffUi.drakesTitle,
+    el('div', {class: 'drakes'}, ...buffUi.drakes.map((d) => el('div', {}, label('buff_' + d.b.id, d.input.id), d.input))),
+    buffUi.note);
+  buffUi.elixir.addEventListener('change', () => {
+    elixirs.forEach((b) => delete state.buffs[b.id]);
+    if (buffUi.elixir.value) state.buffs[buffUi.elixir.value] = 1;
+    render();
+  });
+  buffUi.baron.addEventListener('change', () => { state.buffs[baron.id] = Number(buffUi.baron.value) || 0; render(); });
+  buffUi.checks.forEach((c) => c.input.addEventListener('change', () => { state.buffs[c.b.id] = c.input.checked ? 1 : 0; render(); }));
+  buffUi.drakes.forEach((d) => d.input.addEventListener('change', () => {
+    const others = drakes.reduce((n, b) => n + (b.id === d.b.id ? 0 : state.buffs[b.id] || 0), 0);
+    state.buffs[d.b.id] = Math.max(0, Math.min(d.b.max, 4 - others, Math.round(Number(d.input.value)) || 0));
+    render();
+  }));
+  function renderBuffs() {
+    const on = Object.values(state.buffs).filter((n) => n > 0).length;
+    buffUi.summary.textContent = on ? t('buffsActive', {n: on}) : t('buffs');
+    ui.labels['buffElixir' + side + '-elixir'].textContent = t('buffElixir');
+    fillSelect(buffUi.elixir, elixirs.map((b) => ({value: b.id, label: t('buff_' + b.id)})),
+      (elixirs.find((b) => state.buffs[b.id]) || {}).id, t('none'));
+    if (baron) {
+      ui.labels['buffBaron' + side + '-baron'].textContent = t('buffBaron');
+      const minutes = [];
+      for (let m = baron.byMinute[0]; m <= baron.byMinute[1]; m += 5) minutes.push(m);
+      fillSelect(buffUi.baron, minutes.map((n) => ({value: n, label: t('buffBaronAt', {n})})), state.buffs[baron.id] || null, t('none'));
+    }
+    buffUi.checks.forEach((c) => { c.input.checked = !!state.buffs[c.b.id]; c.text.textContent = t('buff_' + c.b.id); });
+    buffUi.drakesTitle.textContent = t('buffDrakes');
+    buffUi.drakes.forEach((d) => { ui.labels['buff_' + d.b.id + d.input.id].textContent = t('buff_' + d.b.id); d.input.value = state.buffs[d.b.id] || 0; });
+    buffUi.note.textContent = t('buffsNote');
+  }
+
   const left = el('div', {},
     label('champion', side + '-champ'), ui.champ,
     label('level', side + '-level'), el('div', {class: 'row'}, ui.range, ui.number),
@@ -148,7 +195,7 @@ function createPanel(container, side, onChange) {
       el('div', {}, label('secondary', side + '-secondary'), ui.secondary,
         ...ui.secondaryRunes.flatMap((s) => [el('label', {}, ''), s]),
         label('shards', ''), ...ui.shards)),
-    el('label', {class: 'check'}, ui.stacked, el('span', {'data-k': 'stacked'})));
+    el('label', {class: 'check'}, ui.stacked, el('span', {'data-k': 'stacked'})), buffBox);
   const right = el('div', {},
     el('h3', {'data-k': 'items'}), el('div', {class: 'inventory'}, ...ui.slots.map((s) => el('div', {class: 'slot'}, s))),
     ui.cost, ...(side === 'you' ? [label('gold', side + '-gold'), ui.gold] : []), ui.notices,
@@ -299,6 +346,7 @@ function createPanel(container, side, onChange) {
         t(['offense', 'flex', 'defense'][i]));
     });
     ui.stacked.checked = state.stacked;
+    renderBuffs();
 
     ui.slots.forEach((s, i) => {
       fillSelect(s, itemOptions(i), state.items[i], t('empty'));
@@ -326,7 +374,7 @@ function createPanel(container, side, onChange) {
   }
 
   render();
-  return {getSelection: () => ({...state, items: state.items.slice(), combo: state.combo.map((s) => ({...s}))}),
+  return {getSelection: () => ({...state, items: state.items.slice(), buffs: {...state.buffs}, combo: state.combo.map((s) => ({...s}))}),
           setLang: render, results: ui.results, section,
           setItems: (items, gold) => { state.items = items.slice(); if (gold !== undefined) state.gold = gold; removedNotice = ''; render(); },
           // Load a whole build (from the rankings); rows are already legal for their champion.

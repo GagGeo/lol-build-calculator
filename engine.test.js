@@ -632,3 +632,23 @@ test('healing counted only up to your missing health', () => {
   assert.equal(vampCombo({lifesteal: 100}, [{autos: 3}], {yourHpPct: 100}).healedUsed, 0);
   near(vampCombo({lifesteal: 100}, [{autos: 3}], {yourHpPct: 98}).healedUsed, missing);
 });
+
+test('temporary buffs', () => {
+  const B = {...D, rules: {...D.rules, buffs: [
+    {id: 'baron', byMinute: [20, 40], add: {ad: [12, 48], ap: [20, 80]}}, {id: 'ghost', byLevel: true, add: {msPct: [24, 50.82]}},
+    {id: 'elixirIron', add: {hp: 300, tenacity: 25}}, {id: 'elixirSorcery', add: {ap: 50, mpregen: 15}},
+    {id: 'elixirWrath', add: {ad: 30}}, {id: 'infernal', max: 4, mulTotal: {ad: 0.03, ap: 0.03}},
+    {id: 'chemtech', max: 4, add: {tenacity: 6, hsp: 6}}]}};
+  const s = (o) => Engine.championStats(B, {champ: 'Testo', level: 1, items: [], runes: null, stacked: false, stacks: 0, ...o});
+  const none = s({});
+  near(s({buffs: {elixirWrath: 1}}).total.ad - none.total.ad, 30);
+  near(s({buffs: {baron: 30}}).bonus.ad, 30);                 // halfway from 12 to 48
+  near(s({buffs: {baron: 50}}).bonus.ap, 80);                 // capped at 40 min
+  near(s({buffs: {infernal: 2}}).total.ad, none.total.ad * 1.06);
+  near(s({items: ['cap'], buffs: {infernal: 4}}).total.ap, s({items: ['cap']}).total.ap / 1.3 * 1.42); // adds to Rabadon's 30%
+  near(s({buffs: {elixirSorcery: 1}}).total.mpregen - none.total.mpregen, 15);
+  near(s({buffs: {elixirIron: 1, chemtech: 1}}).total.tenacity, 100 - 75 * 0.94); // sources multiply
+  near(s({level: 18, buffs: {ghost: 1}}).bonus.msPct, 50.82);
+  assert.ok(Engine.statBreakdown(B, {champ: 'Testo', level: 1, items: [], runes: null, buffs: {elixirWrath: 1}})
+    .columns.find((c) => c.kind === 'buffs').values.ad > 29);
+});

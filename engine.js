@@ -130,6 +130,18 @@ const Engine = (() => {
     const REGEN = ['hpregen', 'mpregen'];
     for (const [k, v] of Object.entries(passive ? passive.add : {})) if (!REGEN.includes(k)) addBonus(k, v);
 
+    // Temporary buffs (rules.buffs): sel.buffs maps a buff id to its stacks (drakes), game minute (Baron) or 1.
+    const buffMuls = [], buffRegen = {};
+    for (const b of rules.buffs || []) {
+      const n = (sel.buffs || {})[b.id];
+      if (!(n > 0)) continue;
+      const f = b.byMinute ? Math.min(1, Math.max(0, (n - b.byMinute[0]) / (b.byMinute[1] - b.byMinute[0])))
+        : b.byLevel ? (level - 1) / 17 : 0;
+      const val = (v) => (Array.isArray(v) ? v[0] + (v[1] - v[0]) * f : v * (b.max > 1 ? n : 1));
+      for (const [k, v] of Object.entries(b.add || {})) if (REGEN.includes(k)) add(buffRegen, k, val(v)); else addBonus(k, val(v));
+      for (const [k, v] of Object.entries(b.mulTotal || {})) buffMuls.push({stat: k, value: val(v)});
+    }
+
     // Adaptive force: 1 AP or 0.6 AD, toward the larger bonus; ties follow the champion's type.
     const adaptive = bonus.adaptive || 0;
     delete bonus.adaptive;
@@ -144,7 +156,10 @@ const Engine = (() => {
 
     // Item passives: multipliers first, then conversions (conversions are not multiplied).
     const passives = items.flatMap((id) => rules.itemStatPassives[id] || []);
-    for (const m of [...passives.filter((p) => p.op === 'mulTotal'), ...runeMuls, ...(passive ? passive.mul : [])]) {
+    const muls = [...passives.filter((p) => p.op === 'mulTotal').map((m) => ({...m})), ...runeMuls, ...(passive ? passive.mul : [])];
+    // The Infernal drake's AP % adds to other AP % (Rabadon's) instead of multiplying it; everything else multiplies.
+    for (const m of buffMuls) { const same = m.stat === 'ap' && muls.find((x) => x.stat === 'ap'); if (same) same.value += m.value; else muls.push(m); }
+    for (const m of muls) {
       total[m.stat] = (total[m.stat] || 0) * (1 + m.value);
     }
     for (const c of passives.filter((p) => p.op === 'convert')) {
@@ -170,7 +185,7 @@ const Engine = (() => {
     // Base Health/Mana Regen % multiplies the champion's base regen only.
     total.hpregen = base.hpregen * (1 + (bonus.hpRegenPct || 0) / 100) + (fromItems.hpregen || 0);
     total.mpregen = base.mpregen * (1 + (bonus.mpRegenPct || 0) / 100) + (fromItems.mpregen || 0);
-    for (const k of REGEN) total[k] += (passive && passive.add[k]) || 0;
+    for (const k of REGEN) total[k] += ((passive && passive.add[k]) || 0) + (buffRegen[k] || 0);
     bonus.hpregen = total.hpregen - base.hpregen;
     bonus.mpregen = total.mpregen - base.mpregen;
     if (total.crit !== undefined) total.crit = Math.min(100, total.crit);
@@ -949,6 +964,7 @@ const Engine = (() => {
     const columns = items.map((id, slot) => id && {kind: 'item', id, slot,
       values: lost(championStats(data, {...sel, items: items.map((x, i) => (i === slot ? null : x))}))}).filter(Boolean);
     columns.push({kind: 'runes', values: lost(championStats(data, {...sel, runes: null}))});
+    if (Object.values(sel.buffs || {}).some((n) => n > 0)) columns.push({kind: 'buffs', values: lost(championStats(data, {...sel, buffs: null}))});
     const noPassive = {...data, rules: {...data.rules,
       championPassiveStats: {...(data.rules.championPassiveStats || {}), [sel.champ]: undefined}}};
     columns.push({kind: 'champion', values: lost(championStats(noPassive, {...sel, stacks: 0}))});

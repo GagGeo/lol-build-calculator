@@ -269,6 +269,25 @@ RULES = {
     # Permanent stat per stack. Value forms: number per stack; {"per": n, "value": v} = v every n stacks;
     # {"value": v, "max": m} = v per stack up to m; {"byRRank": [r1, r2, r3]} = per stack, by ultimate rank (R at 6/11/16).
     # Values from CommunityDragon champion files, 16.23.
+    # Temporary buffs for the calculator's Buffs box. Values from the LoL Wiki (Dragon_Slayer, Hand_of_Baron,
+    # Ghost and Elixir_* pages), read 2026-11-24. Only effects that change a stat; e.g. Elder, the Ocean drake
+    # and most Dragon Souls are damage, heals or shields. Per entry:
+    #   "add": flat bonus stats; "mulTotal": total stat x (1 + value). Both count once per stack when "max" > 1.
+    #   A [low, high] pair scales from low to high with "byLevel" (level 1 to 18) or "byMinute" [from, to].
+    #   "group": "elixir" = one at a time; "drake" = 4 stacks in all.
+    "buffs": [
+        # ponytail: linear between the wiki's two ends (20 and 40 min, levels 1 and 18); exact curve if it matters
+        {"id": "baron", "byMinute": [20, 40], "add": {"ad": [12, 48], "ap": [20, 80]}},
+        {"id": "ghost", "byLevel": True, "add": {"msPct": [24, 50.82]}},
+        {"id": "elixirIron", "group": "elixir", "add": {"hp": 300, "tenacity": 25}},
+        {"id": "elixirSorcery", "group": "elixir", "add": {"ap": 50, "mpregen": 15}},
+        {"id": "elixirWrath", "group": "elixir", "add": {"ad": 30}},
+        {"id": "infernal", "group": "drake", "max": 4, "mulTotal": {"ad": 0.03, "ap": 0.03}},
+        {"id": "mountain", "group": "drake", "max": 4, "mulTotal": {"armor": 0.05, "mr": 0.05}},
+        {"id": "hextech", "group": "drake", "max": 4, "add": {"ah": 5, "as": 5}},
+        {"id": "chemtech", "group": "drake", "max": 4, "add": {"tenacity": 6, "hsp": 6}},
+        {"id": "cloudSoul", "add": {"msPct": 15}},
+    ],
     "stackers": {
         "Veigar": {"ap": 1},
         "Thresh": {"armor": 1, "ap": 1},

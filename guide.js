@@ -42,6 +42,29 @@ const GUIDE = (() => {
     };
   };
 
+  // Example: health or mana regeneration, shown per minute.
+  const regen = (type) => {
+    const hp = type === 'hp';
+    return {
+      inputs: [{key: 'r', min: 0, max: hp ? 100 : 50, step: 1, value: hp ? 20 : 10,
+        en: hp ? 'Health regen per 5 seconds' : 'Mana regen per 5 seconds', fr: hp ? 'Régén. de PV par 5 secondes' : 'Régén. de mana par 5 secondes'}],
+      run(v) {
+        const perMin = v.r * 12;
+        return {
+          rows: hp
+            ? [{en: 'Health back per minute', fr: 'PV récupérés par minute', value: perMin, max: 1200, strong: true}]
+            : [{en: 'Mana back per minute', fr: 'Mana récupéré par minute', value: perMin, max: 600},
+              {en: '60-mana spells it pays for, per minute', fr: 'Sorts à 60 de mana payés, par minute', value: perMin / 60, max: 10, digits: 1, strong: true}],
+          note: (f) => (hp
+            ? {en: `It keeps ticking in fights, but it shines between them: ${f(perMin / 2, 0)} health back while you walk back to lane for 30 seconds.`,
+               fr: `Elle continue en combat, mais brille entre deux : ${f(perMin / 2, 0)} PV récupérés pendant 30 secondes de retour en voie.`}
+            : {en: `Every 5 seconds you get back ${f(v.r, 0)} mana, in a fight or not.`,
+               fr: `Toutes les 5 secondes, vous récupérez ${f(v.r, 0)} de mana, en combat ou non.`}),
+        };
+      },
+    };
+  };
+
   const EXAMPLES = {
     armor: resist('physical'),
     mr: resist('magic'),
@@ -206,6 +229,62 @@ const GUIDE = (() => {
         };
       },
     },
+    ap: {
+      inputs: [
+        {key: 'ap', min: 0, max: 800, step: 10, value: 100, en: 'Your ability power', fr: 'Votre puissance'},
+        {key: 'mr', min: 0, max: 200, step: 5, value: 50, en: 'Enemy magic resist', fr: 'Résistance magique adverse'},
+      ],
+      run(v) {
+        const raw = 80 + 0.6 * v.ap, dealt = Eng.mitigate(raw, 'magic', {total: {}}, {total: {mr: v.mr}});
+        return {
+          rows: [
+            {en: 'Spell damage before magic resist', fr: 'Dégâts du sort avant la résistance', value: raw, max: 600},
+            {en: 'Spell damage dealt', fr: 'Dégâts du sort infligés', value: dealt, max: 600, strong: true},
+          ],
+          note: (f) => ({
+            en: `A spell dealing 80 magic damage plus 60% of your AP. Here your AP adds ${f(0.6 * v.ap, 0)} of its ${f(raw, 0)} damage, before magic resist.`,
+            fr: `Un sort de 80 dégâts magiques plus 60 % de votre AP. Ici votre AP en ajoute ${f(0.6 * v.ap, 0)} sur ${f(raw, 0)}, avant la résistance.`,
+          }),
+        };
+      },
+    },
+    tenacity: {
+      inputs: [
+        {key: 'a', min: 0, max: 60, step: 5, value: 30, unit: '%', en: 'First source', fr: 'Première source'},
+        {key: 'b', min: 0, max: 60, step: 5, value: 20, unit: '%', en: 'Second source', fr: 'Deuxième source'},
+      ],
+      run(v) {
+        const total = 100 - (100 - v.a) * (100 - v.b) / 100;
+        return {
+          rows: [
+            {en: 'Your tenacity', fr: 'Votre ténacité', value: total, max: 100, unit: '%'},
+            {en: 'A 2-second stun lasts', fr: 'Un étourdissement de 2 secondes dure', value: 2 * (1 - total / 100), max: 2, digits: 2, unit: ' s', strong: true},
+          ],
+          note: (f) => ({
+            en: `Added up, the two sources would give ${f(Math.min(100, v.a + v.b), 0)}%. Each one shortens what the other leaves, so you get ${f(total, 0)}%.`,
+            fr: `Additionnées, les deux sources donneraient ${f(Math.min(100, v.a + v.b), 0)} %. Chacune raccourcit ce que l'autre laisse : vous avez ${f(total, 0)} %.`,
+          }),
+        };
+      },
+    },
+    hsp: {
+      inputs: [
+        {key: 'heal', min: 50, max: 800, step: 10, value: 300, en: 'Heal or shield of your ability', fr: 'Soin ou bouclier de votre sort'},
+        {key: 'hsp', min: 0, max: 50, step: 1, value: 15, unit: '%', en: 'Heal and shield power', fr: 'Puissance des soins et boucliers'},
+      ],
+      run(v) {
+        const given = v.heal * (1 + v.hsp / 100);
+        return {
+          rows: [{en: 'You give', fr: 'Vous donnez', value: given, max: 1200, strong: true}],
+          note: (f) => ({
+            en: `${f(given - v.heal, 0)} more health or shield on every cast, for you or the ally you target.`,
+            fr: `${f(given - v.heal, 0)} PV ou bouclier en plus à chaque lancer, pour vous ou l'allié ciblé.`,
+          }),
+        };
+      },
+    },
+    hpregen: regen('hp'),
+    mpregen: regen('mp'),
   };
 
   // Stat cards by group. "with": how the stat works with others. "wiki": page on the LoL Wiki.
@@ -219,7 +298,7 @@ const GUIDE = (() => {
           {en: 'Critical strikes multiply it.', fr: 'Les coups critiques la multiplient.'},
           {en: 'It is physical damage: the enemy\'s armor reduces it.', fr: 'Ce sont des dégâts physiques : l\'armure adverse les réduit.'},
         ]},
-      {key: 'as', wiki: 'Attack_speed',
+      {key: 'as', wiki: 'Attack_speed', example: 'as',
         what: {en: 'How many basic attacks you make per second. Bonus attack speed is a percentage of your champion\'s own attack speed, and it is capped at 2.5 attacks per second for most champions.',
           fr: 'Le nombre d\'attaques de base par seconde. La vitesse d\'attaque en plus est un pourcentage de celle de votre champion, plafonnée à 2,5 attaques par seconde pour la plupart des champions.'},
         with: [
@@ -233,16 +312,16 @@ const GUIDE = (() => {
           {en: 'Critical damage makes each crit bigger, but only matters if you have crit chance.', fr: 'Les dégâts critiques rendent chaque critique plus fort, mais ne comptent que si vous avez des chances de critique.'},
           {en: 'Attack damage: a crit multiplies it.', fr: 'Dégâts d\'attaque : un critique les multiplie.'},
         ]},
-      {key: 'critDmg', wiki: 'Critical_strike',
+      {key: 'critDmg', wiki: 'Critical_strike', example: 'crit',
         what: {en: 'Raises the damage of your critical strikes above 175%.', fr: 'Augmente les dégâts de vos coups critiques au-delà de 175 %.'},
-        with: [{en: 'Useless without critical strike chance (see the example above).', fr: 'Inutile sans chances de coup critique (voir l\'exemple ci-dessus).'}]},
+        with: [{en: 'Useless without critical strike chance (see the example).', fr: 'Inutile sans chances de coup critique (voir l\'exemple).'}]},
       {key: 'range', wiki: 'Range',
         what: {en: 'How far away your basic attacks reach. Ranged champions can hit from a distance; melee champions must stay close.',
           fr: 'La distance à laquelle portent vos attaques de base. Les champions à distance frappent de loin ; ceux de mêlée doivent rester au contact.'},
         with: [{en: 'Move speed: helps you stay at the right distance.', fr: 'Vitesse de déplacement : aide à rester à la bonne distance.'}]},
     ]},
     {en: 'Abilities', fr: 'Sorts', stats: [
-      {key: 'ap', wiki: 'Ability_power',
+      {key: 'ap', wiki: 'Ability_power', example: 'ap',
         what: {en: 'Makes abilities stronger: each ability adds a share of your AP (its "AP ratio") to its damage, and often to its heals and shields.',
           fr: 'Renforce les sorts : chaque sort ajoute une part de votre AP (son « ratio AP ») à ses dégâts, et souvent à ses soins et boucliers.'},
         with: [
@@ -264,40 +343,36 @@ const GUIDE = (() => {
           {en: 'Mana regeneration refills it.', fr: 'La régénération de mana la remplit.'},
           {en: 'Some items turn mana into other stats (Archangel\'s Staff gives AP from mana).', fr: 'Certains objets transforment le mana en autres stats (le Bâton de l\'archange donne de l\'AP selon le mana).'},
         ]},
-      {key: 'mpregen', wiki: 'Mana_regeneration',
+      {key: 'mpregen', wiki: 'Mana_regeneration', example: 'mpregen',
         what: {en: 'Mana you get back every 5 seconds, even in a fight.', fr: 'Le mana récupéré toutes les 5 secondes, même en combat.'},
         with: [{en: 'Base mana regen % multiplies only your champion\'s own regen, not the regen from items.',
           fr: 'La régénération de mana de base % multiplie seulement celle de votre champion, pas celle des objets.'}]},
     ]},
     {en: 'Getting through defenses', fr: 'Percer les défenses', stats: [
-      {key: 'lethality', wiki: 'Lethality',
+      {key: 'lethality', wiki: 'Lethality', example: 'armor',
         what: {en: 'Ignores a fixed amount of the enemy\'s armor. 18 lethality against 50 armor removes a third of it; against 250 armor, much less.',
           fr: 'Ignore une quantité fixe de l\'armure adverse. 18 de létalité contre 50 d\'armure en retire un tiers ; contre 250, beaucoup moins.'},
         with: [
           {en: 'Best against low-armor targets (mages, marksmen).', fr: 'Idéale contre les cibles à peu d\'armure (mages, tireurs).'},
           {en: 'Applied after armor penetration %. It can\'t bring armor below 0.', fr: 'Appliquée après la pénétration d\'armure %. Elle ne descend pas l\'armure sous 0.'},
-          {en: 'Try it in the Armor example (Defense tab).', fr: 'Essayez-la dans l\'exemple Armure (onglet Défense).'},
         ]},
-      {key: 'armorPenPct', wiki: 'Armor_penetration',
+      {key: 'armorPenPct', wiki: 'Armor_penetration', example: 'armor',
         what: {en: 'Ignores a percentage of the enemy\'s armor. The more armor they have, the more it removes.',
           fr: 'Ignore un pourcentage de l\'armure adverse. Plus l\'adversaire en a, plus elle en retire.'},
         with: [
           {en: 'Best against tanks.', fr: 'Idéale contre les tanks.'},
           {en: 'Applied before lethality.', fr: 'Appliquée avant la létalité.'},
-          {en: 'Try it in the Armor example (Defense tab).', fr: 'Essayez-la dans l\'exemple Armure (onglet Défense).'},
         ]},
-      {key: 'magicPen', wiki: 'Magic_penetration',
+      {key: 'magicPen', wiki: 'Magic_penetration', example: 'mr',
         what: {en: 'Ignores a fixed amount of the enemy\'s magic resist, like lethality does for armor.',
           fr: 'Ignore une quantité fixe de la résistance magique adverse, comme la létalité pour l\'armure.'},
         with: [
           {en: 'Best against low magic resist targets. Applied after magic penetration %.', fr: 'Idéale contre les cibles à peu de résistance magique. Appliquée après la pénétration magique %.'},
-          {en: 'Try it in the Magic Resist example (Defense tab).', fr: 'Essayez-la dans l\'exemple Résistance magique (onglet Défense).'},
         ]},
-      {key: 'magicPenPct', wiki: 'Magic_penetration',
+      {key: 'magicPenPct', wiki: 'Magic_penetration', example: 'mr',
         what: {en: 'Ignores a percentage of the enemy\'s magic resist.', fr: 'Ignore un pourcentage de la résistance magique adverse.'},
         with: [
           {en: 'Best against tanks. Applied before flat magic penetration.', fr: 'Idéale contre les tanks. Appliquée avant la pénétration magique fixe.'},
-          {en: 'Try it in the Magic Resist example (Defense tab).', fr: 'Essayez-la dans l\'exemple Résistance magique (onglet Défense).'},
         ]},
     ]},
     {en: 'Defense', fr: 'Défense', stats: [
@@ -327,14 +402,14 @@ const GUIDE = (() => {
           {en: 'Health: magic resist multiplies it, like armor does.', fr: 'PV : la résistance magique les multiplie, comme l\'armure.'},
           {en: 'The attacker\'s magic penetration % then flat magic penetration reduce it.', fr: 'La pénétration magique % puis fixe de l\'attaquant la réduisent.'},
         ]},
-      {key: 'tenacity', wiki: 'Tenacity',
+      {key: 'tenacity', wiki: 'Tenacity', example: 'tenacity',
         what: {en: 'Shortens most crowd control on you (stuns, slows, roots). It doesn\'t shorten knock-ups or suppression.',
           fr: 'Raccourcit la plupart des contrôles subis (étourdissements, ralentissements, immobilisations). Pas les projections ni les suppressions.'},
         with: [
           {en: 'Mercury\'s Treads, Sterak\'s Gage and the Tenacity stat shard give it.', fr: 'Les Sandales de Mercure, le Gage de Sterak et le fragment de Ténacité en donnent.'},
           {en: 'Sources multiply instead of adding up: 30% and 20% make 44%, not 50%.', fr: 'Les sources se multiplient au lieu de s\'additionner : 30 % et 20 % font 44 %, pas 50 %.'},
         ]},
-      {key: 'hpregen', wiki: 'Health_regeneration',
+      {key: 'hpregen', wiki: 'Health_regeneration', example: 'hpregen',
         what: {en: 'Health you get back every 5 seconds.', fr: 'Les PV récupérés toutes les 5 secondes.'},
         with: [{en: 'Base health regen % multiplies only your champion\'s own regen, not the regen from items.',
           fr: 'La régénération de PV de base % multiplie seulement celle de votre champion, pas celle des objets.'}]},
@@ -347,11 +422,11 @@ const GUIDE = (() => {
           {en: 'Attack damage, attack speed and crits: more damage, more healing.', fr: 'Dégâts d\'attaque, vitesse d\'attaque et critiques : plus de dégâts, plus de soins.'},
           {en: 'Grievous Wounds cut it.', fr: 'Les Blessures graves le réduisent.'},
         ]},
-      {key: 'omnivamp', wiki: 'Omnivamp',
+      {key: 'omnivamp', wiki: 'Omnivamp', example: 'heal',
         what: {en: 'Like life steal, but heals from all the damage you deal, abilities included.',
           fr: 'Comme le vol de vie, mais soigne sur tous vos dégâts, sorts compris.'},
-        with: [{en: 'Grievous Wounds cut it too (see the example under Life Steal).', fr: 'Les Blessures graves le réduisent aussi (voir l\'exemple sous Vol de vie).'}]},
-      {key: 'hsp', wiki: 'Heal_and_shield_power',
+        with: [{en: 'Grievous Wounds cut it too.', fr: 'Les Blessures graves le réduisent aussi.'}]},
+      {key: 'hsp', wiki: 'Heal_and_shield_power', example: 'hsp',
         what: {en: 'Makes the heals and shields you give stronger, on yourself and on allies. Here, it boosts your champion\'s own healing abilities.',
           fr: 'Renforce les soins et boucliers que vous donnez, à vous et à vos alliés. Ici, il renforce les sorts de soin de votre champion.'},
         with: [{en: 'Mostly for supports and champions with healing abilities.', fr: 'Surtout pour les supports et les champions qui ont des sorts de soin.'}]},

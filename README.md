@@ -16,7 +16,7 @@ To share it, send that link.
 
 ### What it does
 
-- **Stats:** pick a champion, a level (1 to 18), runes and up to 6 items, and see the resulting stats. Builds the game wouldn't allow (two pairs of boots, two copies of the same legendary…) can't be picked.
+- **Stats:** pick a champion, a level (1 to 18), runes and up to 6 items, and see the resulting stats. Builds the game wouldn't allow (two pairs of boots, two copies of the same legendary…) can't be picked. Open **Temporary buffs** to add an elixir, Baron, Ghost or dragon stacks.
 - **Damage:** click **+ Add an enemy** and pick their champion, level, runes and items. You see what your basic attacks and spells deal to them after armor and magic resist, and the result of a full combo: "kills at step 3" or "leaves 420 HP". The same is shown in the other direction.
 - **What to buy:** type the gold you're carrying and click **Suggest purchases**. The tool ranks what you can buy right now, including finishing an item from parts you already own, by extra damage to the enemy, by how much more of their combo you survive, or by any stat (Health, Armor, Life Steal…; no enemy needed). **Apply** puts the purchase into your items.
 
@@ -86,7 +86,7 @@ Pour le partager, envoyez ce lien.
 
 ### Ce qu'il fait
 
-- **Statistiques :** choisissez un champion, un niveau (1 à 18), des runes et jusqu'à 6 objets, et voyez les statistiques obtenues. Les builds impossibles en jeu (deux paires de bottes, deux fois le même objet légendaire…) ne peuvent pas être choisis.
+- **Statistiques :** choisissez un champion, un niveau (1 à 18), des runes et jusqu'à 6 objets, et voyez les statistiques obtenues. Les builds impossibles en jeu (deux paires de bottes, deux fois le même objet légendaire…) ne peuvent pas être choisis. Ouvrez **Bonus temporaires** pour ajouter un élixir, le Baron, Fantôme ou des cumuls de dragons.
 - **Dégâts :** cliquez sur **+ Ajouter un adversaire** et choisissez son champion, son niveau, ses runes et ses objets. Vous voyez ce que vos attaques de base et vos sorts lui infligent après armure et résistance magique, et le résultat d'un combo complet : « tue à l'étape 3 » ou « laisse 420 PV ». La même chose est affichée dans l'autre sens.
 - **Quoi acheter :** indiquez l'or que vous avez en poche et cliquez sur **Proposer des achats**. L'outil classe ce que vous pouvez acheter maintenant, y compris terminer un objet à partir des composants que vous possédez déjà, selon les dégâts en plus sur l'adversaire, la vie qu'il vous reste en plus après son combo, ou n'importe quelle statistique (Points de vie, Armure, Vol de vie… ; sans adversaire). **Appliquer** ajoute l'achat à vos objets.
 
