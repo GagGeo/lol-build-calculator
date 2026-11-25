@@ -247,9 +247,17 @@ test('spell not learned', () => {
 });
 test('startOrder: hand-written, else the max order by default', () => {
   const d = {...D2, rules: {...D2.rules, skillOrders: {Annie: 'QWE'}, startOrders: {Annie: 'QEQ'}}};
-  assert.deepEqual(Engine.startOrder(d, 'Annie'), {order: ['Q', 'E', 'Q'], byDefault: false});
+  assert.deepEqual(Engine.startOrder(d, 'Annie'), {order: ['Q', 'E', 'Q'], free: [], byDefault: false});
   const d0 = {...d, rules: {...d.rules, startOrders: {}}};
-  assert.deepEqual(Engine.startOrder(d0, 'Annie'), {order: ['Q', 'W', 'E'], byDefault: true});
+  assert.deepEqual(Engine.startOrder(d0, 'Annie'), {order: ['Q', 'W', 'E'], free: [], byDefault: true});
+});
+test('startOrder is what the engine takes: free ranks apart, 4 levels when R is a basic, none without ranks', () => {
+  const rules = (rule) => ({...D2, rules: {...D2.rules, skillOrders: {Annie: 'QWE'}, skillRankRules: {Annie: rule}}});
+  assert.deepEqual(Engine.startOrder(rules({free: {W: 1}}), 'Annie'), {order: ['Q', 'E', 'Q'], free: ['W'], byDefault: true});
+  const udyr = {...D2, rules: {...D2.rules, skillOrders: {Annie: 'RQWE'}, skillRankRules: {Annie: {basicR: true}}},
+    champions: {...D2.champions, Annie: {...D2.champions.Annie, spells: D2.champions.Annie.spells.map((x) => ({...x, maxrank: x.key === 'P' ? 1 : 6}))}}};
+  assert.deepEqual(Engine.startOrder(udyr, 'Annie').order, ['R', 'Q', 'W', 'E']);
+  assert.deepEqual(Engine.startOrder(rules({noRanks: ['Q', 'W', 'E']}), 'Annie').order, []);
 });
 test('forced rank overrides the level', () => {
   near(Engine.spellDamage(D2, {...side({level: 1}), ranks: {Q: 3}}, tgt(), 'Q').damage, 170);

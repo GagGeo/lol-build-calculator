@@ -438,11 +438,22 @@ const Engine = (() => {
     return {nonCrit: hit(ad), crit: hit(ad * mult), average: hit(ad * (1 + chance * (mult - 1)))};
   }
 
-  // What to take at levels 1-3: rules.startOrders (written by hand, e.g. "QEW"), else the max order itself.
+  // What the champion takes at the start, as the engine ranks it: one ability per level for levels 1-3 (1-4 when R
+  // is a basic, Udyr), without ranks given for free (`free`, e.g. Yuumi's W) or abilities without ranks (Aphelios:
+  // empty). byDefault: no hand-written rules.startOrders, so it follows the max order.
   function startOrder(data, champId) {
-    const hand = (data.rules.startOrders || {})[champId];
-    return hand ? {order: hand.split(''), byDefault: false} : {order: skillOrder(data, champId).order.slice(0, 3), byDefault: true};
+    const rule = (data.rules.skillRankRules || {})[champId] || {}, fixed = rule.noRanks || [];
+    const order = [];
+    let prev = {Q: 0, W: 0, E: 0, R: 0, ...rule.free};
+    for (let l = 1; l <= (rule.basicR ? 4 : 3); l++) {
+      const r = abilityRanks(data, champId, l);
+      const k = ['Q', 'W', 'E', 'R'].find((key) => r[key] > prev[key] && !fixed.includes(key));
+      if (k) order.push(k);
+      prev = r;
+    }
+    return {order, free: Object.keys(rule.free || {}), byDefault: !(data.rules.startOrders || {})[champId]};
   }
+
 
   // The rank of every ability at `level` with the max order `priority` (default: the champion's usual one), the
   // levels 1-3 order (hand-written, else the max order in use) and the champion's rank rule.

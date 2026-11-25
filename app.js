@@ -351,6 +351,9 @@ function createPanel(container, side, onChange) {
     ui.hp.value = state.currentHpPct;
     ui.gold.value = state.gold;
     if (ui.labels['gold' + side + '-gold']) ui.labels['gold' + side + '-gold'].textContent = t('goldInPocket');
+    // No ranks to order (Aphelios): no picker.
+    const ordered = Engine.startOrder(DATA, state.champ).order.length > 0;
+    for (const node of [ui.priority, ui.priorityNote, ui.labels['skillOrder' + side + '-priority']]) node.hidden = !ordered;
     fillSelect(ui.priority, Engine.orderChoices(DATA, state.champ).map((p) => ({value: p, label: p.split('').join(' > ')})), state.priority.join(''));
     const usual = Engine.skillOrder(DATA, state.champ);
     ui.priorityNote.textContent = usual.order.join('') !== state.priority.join('') ? t('skillOrderChanged', {order: usual.order.join(' > ')})
@@ -1182,7 +1185,8 @@ function createChampionsTab(section) {
     update();
     return [el('h4', {text: t('champAbilities')}),
       el('div', {class: 'guide-row'}, el('label', {for: 'champ-ability-level', text: t('level')}), range, out),
-      el('div', {class: 'guide-row'}, el('label', {for: 'champ-ability-order', text: t('abilityOrder')}), pickOrder),
+      ...(Engine.startOrder(DATA, id).order.length
+        ? [el('div', {class: 'guide-row'}, el('label', {for: 'champ-ability-order', text: t('abilityOrder')}), pickOrder)] : []),
       list, el('h4', {text: t('abilityRanks')}), el('div', {class: 'rank-table-wrap'}, table),
       el('p', {class: 'note', text: t('abilityRanksNote')}), el('p', {class: 'note', text: t('abilityNote')})];
   }
@@ -1209,11 +1213,14 @@ function createChampionsTab(section) {
     if (s.excluded.length && s.stats.length) parts.push(el('p', {class: 'notice', text: t('champExcluded', {spells: names.join(', ')})}));
     parts.push(el('p', {class: 'note', text: t('champScalesNote')}));
     const order = Engine.skillOrder(DATA, selected);
+    // The opening as the engine takes it; a rank given for free (Yuumi's W) rides on level 1. No ranks (Aphelios):
+    // no order to give.
     const start = Engine.startOrder(DATA, selected);
-    parts.push(el('p', {}, el('strong', {text: t('skillOrder') + ': '}),
-      t('skillStart', {order: start.order.join(', '), note: start.byDefault ? t('skillStartDefault') : ''})
-      + t('skillOrderMax', {order: order.order.join(' > ')})
-      + (order.estimated ? ' ' + t('skillOrderEstimatedShort') : '')));
+    const opening = start.order.map((k, i) => (i === 0 && start.free.length ? t('skillStartFree', {key: k, free: start.free.join(', ')}) : k));
+    parts.push(el('p', {}, el('strong', {text: t('skillOrder') + ': '}), start.order.length
+      ? t('skillStart', {n: start.order.length, order: opening.join(', '), note: start.byDefault ? t('skillStartDefault') : ''})
+        + t('skillOrderMax', {order: order.order.join(' > ')}) + (order.estimated ? ' ' + t('skillOrderEstimatedShort') : '')
+      : t('abilityNoRanks')));
     // Sections are blocks so the two-column layout never splits one (index.html).
     parts.splice(1, parts.length - 1, el('div', {class: 'block'}, ...parts.slice(1)));
     if (typeof GUIDE === 'object') {

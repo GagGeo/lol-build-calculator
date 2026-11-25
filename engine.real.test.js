@@ -358,7 +358,11 @@ test('start orders: valid letters, champions exist', () => {
     assert.ok(D.champions[id], id);
     assert.match(o, /^[QWE]{3}$/, id);
   }
-  for (const id of Object.keys(D.champions)) assert.equal(Engine.startOrder(D, id).order.length, 3, id);
+  const expected = (id) => {
+    const rule = D.rules.skillRankRules[id] || {};
+    return rule.basicR ? 4 : (rule.noRanks || []).length === 3 ? 0 : 3;
+  };
+  for (const id of Object.keys(D.champions)) assert.equal(Engine.startOrder(D, id).order.length, expected(id), id);
 });
 
 test('skill orders: hand-written ones are used by default, the rest are estimated', () => {
