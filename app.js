@@ -1107,32 +1107,60 @@ function createChampionsTab(section) {
       el('p', {class: 'note', text: t('champBuildNote', {profile: t('tag_' + b.profile)})}), el('div', {class: 'row combo-add'}, load)];
   }
   // Each ability's damage at a level picked with a slider, and what it scales with (Engine.spellScaling).
-  let abilityLevel = 9;
+  // The max order picked above the table; a new champion starts on its advised order.
+  let abilityLevel = 9, abilityOrder = {champ: null, order: null};
   function abilities(id) {
-    const list = el('ul');
+    const list = el('ul'), table = el('table', {class: 'rank-table'});
     const range = el('input', {type: 'range', id: 'champ-ability-level', min: 1, max: 18, step: 1, value: abilityLevel});
     const out = el('output', {for: 'champ-ability-level'});
+    const advised = Engine.skillOrder(DATA, id).order.join('');
+    if (abilityOrder.champ !== id) abilityOrder = {champ: id, order: advised};
+    const pickOrder = el('select', {id: 'champ-ability-order'});
+    fillSelect(pickOrder, ['QWE', 'QEW', 'WQE', 'WEQ', 'EQW', 'EWQ'].map((o) => {
+      const label = o.split('').join(' > ');
+      return {value: o, label: o === advised ? t('abilityOrderAdvised', {order: label}) : label};
+    }), abilityOrder.order);
+    const c = DATA.champions[id];
+    const resName = c.resource === 'Mana' ? t('stat_mp') : c.resource === 'Energy' ? t('stat_energy') : c.resource;
     const update = () => {
       out.textContent = String(abilityLevel);
-      list.replaceChildren(...Engine.spellScaling(DATA, id, abilityLevel).map((sp) => {
+      const order = abilityOrder.order.split('');
+      // Same rule as the engine: a hand-written levels 1-3 order, else the max order in use.
+      const start = Engine.startOrder(DATA, id);
+      const ranks = Engine.skillRanks(c, abilityLevel, order, start.byDefault ? order : start.order);
+      const rows = Engine.spellRankTable(DATA, id, abilityLevel);
+      const cols = Math.max(...rows.map((r) => r.cells.length));
+      table.replaceChildren(
+        el('thead', {}, el('tr', {}, el('th'), ...Array.from({length: cols}, (_, i) => el('th', {text: `${t('rank')} ${i + 1}`})))),
+        el('tbody', {}, ...rows.map((r) => el('tr', {}, el('th', {scope: 'row'}, el('strong', {text: r.key}), el('span', {class: 'ability-desc', text: nm(r.name)})),
+          ...Array.from({length: cols}, (_, i) => {
+            const cell = r.cells[i];
+            if (!cell) return el('td');
+            const text = cell.unreadable ? t('abilityUnreadable') : cell.noDamage || !cell.damage ? t('abilityNoDamage')
+              : t('abilityDamage', {damage: fmt(cell.damage, 0), type: t('type_' + cell.type)}) + (cell.perHit ? ' ' + t('perHit') : '');
+            const extra = [cell.cooldown ? `${cell.cooldown} s` : '', cell.cost ? `${cell.cost} ${resName}` : ''].filter(Boolean).join(' · ');
+            return el('td', {class: ranks[r.key] === cell.rank ? 'current' : ''}, text, ...(extra ? [el('span', {class: 'ability-desc', text: extra})] : []));
+          })))));
+      list.replaceChildren(...Engine.spellScaling(DATA, id, abilityLevel, order).map((sp) => {
         const head = `${sp.key === 'P' ? t('passive') : sp.key} · ${nm(sp.name)}: `;
         const text = !sp.learned ? t('notLearned') : sp.unreadable ? t('abilityUnreadable') : sp.noDamage || !sp.damage ? t('abilityNoDamage')
           : t('abilityDamage', {damage: fmt(sp.damage, 0), type: t('type_' + sp.type)}) + (sp.perHit ? ' ' + t('perHit') : '')
             + (sp.key !== 'P' ? ` (${t('rank').toLowerCase()} ${sp.rank})` : '')
             + (sp.ratios.length ? '. ' + t('abilityScales', {list: sp.ratios.map((r) => `${fmt(100 * r.ratio, 0)}% ${t('stat_' + r.stat)}`).join(', ')}) : '');
         const spell = DATA.champions[id].spells.find((x) => x.key === sp.key) || {};
-        const res = DATA.champions[id].resource;
-        const resName = res === 'Mana' ? t('stat_mp') : res === 'Energy' ? t('stat_energy') : res;
         const extra = [stripTags(nm(spell.desc || {en: ''})), spell.cooldown ? t('abilityCooldown', {cd: spell.cooldown}) : '',
           spell.cost ? t('abilityCost', {cost: spell.cost, resource: resName}) : ''].filter(Boolean).join(' ');
         return el('li', {}, el('strong', {text: head}), text, ...(extra ? [el('span', {class: 'ability-desc', text: extra})] : []));
       }));
     };
     range.addEventListener('input', () => { abilityLevel = Number(range.value); update(); });
+    pickOrder.addEventListener('change', () => { abilityOrder = {champ: id, order: pickOrder.value}; update(); });
     update();
     return [el('h4', {text: t('champAbilities')}),
       el('div', {class: 'guide-row'}, el('label', {for: 'champ-ability-level', text: t('level')}), range, out),
-      list, el('p', {class: 'note', text: t('abilityNote')})];
+      el('div', {class: 'guide-row'}, el('label', {for: 'champ-ability-order', text: t('abilityOrder')}), pickOrder),
+      list, el('h4', {text: t('abilityRanks')}), el('div', {class: 'rank-table-wrap'}, table),
+      el('p', {class: 'note', text: t('abilityNote')})];
   }
 
   function renderCard() {
@@ -1157,7 +1185,10 @@ function createChampionsTab(section) {
     if (s.excluded.length && s.stats.length) parts.push(el('p', {class: 'notice', text: t('champExcluded', {spells: names.join(', ')})}));
     parts.push(el('p', {class: 'note', text: t('champScalesNote')}));
     const order = Engine.skillOrder(DATA, selected);
-    parts.push(el('p', {}, el('strong', {text: t('skillOrder') + ': '}), t('skillOrderMax', {order: order.order.join(' > ')})
+    const start = Engine.startOrder(DATA, selected);
+    parts.push(el('p', {}, el('strong', {text: t('skillOrder') + ': '}),
+      t('skillStart', {order: start.order.join(', '), note: start.byDefault ? t('skillStartDefault') : ''})
+      + t('skillOrderMax', {order: order.order.join(' > ')})
       + (order.estimated ? ' ' + t('skillOrderEstimatedShort') : '')));
     // Sections are blocks so the two-column layout never splits one (index.html).
     parts.splice(1, parts.length - 1, el('div', {class: 'block'}, ...parts.slice(1)));
