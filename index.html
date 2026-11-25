@@ -100,7 +100,9 @@
   .rank-table-wrap { overflow-x: auto; }
   .rank-table { border-collapse: collapse; width: 100%; font-variant-numeric: tabular-nums; }
   .rank-table th, .rank-table td { padding: 4px 6px; border-top: 1px solid var(--line); text-align: center; vertical-align: top; }
-  .rank-table tbody th { text-align: left; font-weight: 400; }
+  .rank-table tbody th { text-align: left; font-weight: 400; color: var(--muted); padding-left: 14px; }
+  .rank-table tr.ability-head th { color: var(--text); padding: 12px 6px 2px; border-top: 1px solid var(--line); }
+  .rank-table tr:not(.ability-head) th, .rank-table tr:not(.ability-head) td { border-top: 0; }
   .rank-table .ability-desc { font-size: 13px; margin: 0; }
   .rank-table td.current { outline: 1px solid var(--gold); background: var(--raised); color: var(--gold-bright); }
   .guide-row select { grid-column: 2 / 4; }
@@ -264,7 +266,7 @@
 <script src="data.js?v=b9254e4f0b"></script>
 <script src="engine.js?v=c6fcc2b915"></script>
 <script src="guide.js?v=f38a5c140f"></script>
-<script src="i18n.js?v=01795cc55e"></script>
-<script src="app.js?v=46da4130ab"></script>
+<script src="i18n.js?v=6f2374f04a"></script>
+<script src="app.js?v=c43ce66546"></script>
 </body>
 </html>

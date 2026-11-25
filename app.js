@@ -111,7 +111,6 @@ function shardLabel(id) {
   return key === 'hpPerLevel' ? t('shard_hpPerLevel') : `${t('stat_' + key)} +${fmt(value)}${key === 'as' || key === 'msPct' || key === 'tenacity' ? '%' : ''}`;
 }
 
-const PRIORITIES = ['QWE', 'QEW', 'WQE', 'WEQ', 'EQW', 'EWQ'];
 const sourceName = (source) => {
   const [kind, id] = source.split(':');
   return kind === 'item' ? nm(DATA.items[id].name) : runeName(id);
@@ -352,7 +351,7 @@ function createPanel(container, side, onChange) {
     ui.hp.value = state.currentHpPct;
     ui.gold.value = state.gold;
     if (ui.labels['gold' + side + '-gold']) ui.labels['gold' + side + '-gold'].textContent = t('goldInPocket');
-    fillSelect(ui.priority, PRIORITIES.map((p) => ({value: p, label: p.split('').join(' > ')})), state.priority.join(''));
+    fillSelect(ui.priority, Engine.orderChoices(DATA, state.champ).map((p) => ({value: p, label: p.split('').join(' > ')})), state.priority.join(''));
     const usual = Engine.skillOrder(DATA, state.champ);
     ui.priorityNote.textContent = usual.order.join('') !== state.priority.join('') ? t('skillOrderChanged', {order: usual.order.join(' > ')})
       : usual.estimated ? t('skillOrderEstimated') : '';
@@ -445,7 +444,7 @@ function createPanel(container, side, onChange) {
               const n = Math.round(Number((o.b && typeof o.b === 'object' ? o.b : {})[b.id]) || 0);
               if (n > 0) state.buffs[b.id] = Math.min(n, b.byMinute ? b.byMinute[1] : b.max || 1);
             }
-            if (PRIORITIES.includes(o.p)) state.priority = o.p.split('');
+            if (Engine.orderChoices(DATA, state.champ).includes(o.p)) state.priority = o.p.split('');
             state.currentHpPct = Engine.clampPct(o.h);
             state.gold = Math.max(0, Math.min(1e6, Math.round(Number(o.g)) || 0));
             removedNotice = '';
@@ -473,7 +472,9 @@ function renderDamage(attackerPanel, targetPanel) {
   const maxHp = bStats.total.hp;
   const target = {stats: bStats, currentHp: maxHp * Engine.clampPct(b.currentHpPct) / 100};
   const notes = [];
-  if (champA.flags.includes('custom_skill_ranks')) notes.push(t('customRanks', {champ: nm(champA.name)}));
+  // Ranks are an estimate only where the rank rule doesn't cover everything (Aphelios' stat points).
+  const rankRule = (DATA.rules.skillRankRules || {})[a.champ];
+  if (champA.flags.includes('custom_skill_ranks') && (!rankRule || rankRule.noRanks)) notes.push(t('customRanks', {champ: nm(champA.name)}));
   const pctOf = (dmg) => t('ofMaxHp', {pct: fmt(100 * dmg / maxHp)});
 
   const aa = Engine.autoAttack(aStats, bStats, DATA.rules);
@@ -1116,7 +1117,7 @@ function createChampionsTab(section) {
     const advised = Engine.skillOrder(DATA, id).order.join('');
     if (abilityOrder.champ !== id) abilityOrder = {champ: id, order: advised};
     const pickOrder = el('select', {id: 'champ-ability-order'});
-    fillSelect(pickOrder, ['QWE', 'QEW', 'WQE', 'WEQ', 'EQW', 'EWQ'].map((o) => {
+    fillSelect(pickOrder, Engine.orderChoices(DATA, id).map((o) => {
       const label = o.split('').join(' > ');
       return {value: o, label: o === advised ? t('abilityOrderAdvised', {order: label}) : label};
     }), abilityOrder.order);
@@ -1125,22 +1126,42 @@ function createChampionsTab(section) {
     const update = () => {
       out.textContent = String(abilityLevel);
       const order = abilityOrder.order.split('');
-      // Same rule as the engine: a hand-written levels 1-3 order, else the max order in use.
-      const start = Engine.startOrder(DATA, id);
-      const ranks = Engine.skillRanks(c, abilityLevel, order, start.byDefault ? order : start.order);
+      const ranks = Engine.abilityRanks(DATA, id, abilityLevel, order);
       const rows = Engine.spellRankTable(DATA, id, abilityLevel);
-      const cols = Math.max(...rows.map((r) => r.cells.length));
+      const cols = Math.max(1, ...rows.map((r) => r.cells.length));
+      const num = (v) => fmt(v, Number.isInteger(v) ? 0 : 2);
+      // One row of values per rank; the current rank is highlighted on every row of the ability.
+      const line = (r, label, values) => el('tr', {}, el('th', {scope: 'row', text: label}),
+        ...Array.from({length: cols}, (_, i) => (i < values.length && i < r.cells.length
+          ? el('td', {class: ranks[r.key] === i + 1 ? 'current' : '', text: values[i]}) : el('td'))));
+      const varies = (str) => String(str || '').includes('/');
       table.replaceChildren(
-        el('thead', {}, el('tr', {}, el('th'), ...Array.from({length: cols}, (_, i) => el('th', {text: `${t('rank')} ${i + 1}`})))),
-        el('tbody', {}, ...rows.map((r) => el('tr', {}, el('th', {scope: 'row'}, el('strong', {text: r.key}), el('span', {class: 'ability-desc', text: nm(r.name)})),
-          ...Array.from({length: cols}, (_, i) => {
-            const cell = r.cells[i];
-            if (!cell) return el('td');
-            const text = cell.unreadable ? t('abilityUnreadable') : cell.noDamage || !cell.damage ? t('abilityNoDamage')
-              : t('abilityDamage', {damage: fmt(cell.damage, 0), type: t('type_' + cell.type)}) + (cell.perHit ? ' ' + t('perHit') : '');
-            const extra = [cell.cooldown ? `${cell.cooldown} s` : '', cell.cost ? `${cell.cost} ${resName}` : ''].filter(Boolean).join(' · ');
-            return el('td', {class: ranks[r.key] === cell.rank ? 'current' : ''}, text, ...(extra ? [el('span', {class: 'ability-desc', text: extra})] : []));
-          })))));
+        el('thead', {}, el('tr', {}, el('th'), ...Array.from({length: cols}, (_, i) => el('th', {scope: 'col', text: `${t('rank')} ${i + 1}`})))),
+        el('tbody', {}, ...rows.flatMap((r) => {
+          const spell = c.spells.find((x) => x.key === r.key);
+          const fixed = [spell.cooldown && !varies(spell.cooldown) ? t('abilityCooldown', {cd: spell.cooldown}) : '',
+            spell.cost && !varies(spell.cost) ? t('abilityCost', {cost: spell.cost, resource: resName}) : ''].filter(Boolean).join(' ');
+          const head = el('tr', {class: 'ability-head'}, el('th', {colspan: cols + 1, scope: 'rowgroup'},
+            el('strong', {text: `${r.key} · ${nm(r.name)}`}), ...(fixed ? [' ', el('span', {class: 'note', text: fixed})] : []),
+            ...(r.noRanks ? [el('span', {class: 'ability-desc', text: t('abilityNoRanks')})] : [])));
+          if (r.noRanks) return [head];
+          const out = [head];
+          if (r.cells.every((x) => x.unreadable)) {
+            out.push(el('tr', {}, el('th', {scope: 'row', text: t('abilityDamageRow')}), el('td', {colspan: cols, text: t('abilityUnreadable')})));
+          } else if (!r.cells.every((x) => x.noDamage || (!x.unreadable && !x.damage))) {
+            // The damage type (and "per hit") goes in the row's label when every rank shares it, numbers in the cells.
+            const dealt = r.cells.filter((x) => !x.unreadable && !x.noDamage && x.damage);
+            const same = dealt.length > 0 && dealt.every((x) => x.type === dealt[0].type && !!x.perHit === !!dealt[0].perHit);
+            const typed = same ? t('abilityDamageTyped', {type: t('type_' + dealt[0].type)}) + (dealt[0].perHit ? ' ' + t('perHit') : '') : '';
+            const label = typed ? typed[0].toUpperCase() + typed.slice(1) : t('abilityDamageRow');
+            out.push(line(r, label, r.cells.map((x) => (x.unreadable ? '?' : x.noDamage || !x.damage ? '—'
+              : num(Math.round(x.damage)) + (same ? '' : ` ${t('type_' + x.type)}` + (x.perHit ? ' ' + t('perHit') : ''))))));
+          }
+          if (varies(spell.cooldown)) out.push(line(r, t('abilityCooldownRow'), r.cells.map((x) => x.cooldown || '')));
+          if (varies(spell.cost)) out.push(line(r, t('abilityCostRow', {resource: resName}), r.cells.map((x) => x.cost || '')));
+          for (const lu of r.levelUp) out.push(line(r, nm(lu.label), lu.values.map((v) => num(v) + (lu.pct ? '%' : ''))));
+          return out;
+        })));
       list.replaceChildren(...Engine.spellScaling(DATA, id, abilityLevel, order).map((sp) => {
         const head = `${sp.key === 'P' ? t('passive') : sp.key} · ${nm(sp.name)}: `;
         const text = !sp.learned ? t('notLearned') : sp.unreadable ? t('abilityUnreadable') : sp.noDamage || !sp.damage ? t('abilityNoDamage')
@@ -1160,7 +1181,7 @@ function createChampionsTab(section) {
       el('div', {class: 'guide-row'}, el('label', {for: 'champ-ability-level', text: t('level')}), range, out),
       el('div', {class: 'guide-row'}, el('label', {for: 'champ-ability-order', text: t('abilityOrder')}), pickOrder),
       list, el('h4', {text: t('abilityRanks')}), el('div', {class: 'rank-table-wrap'}, table),
-      el('p', {class: 'note', text: t('abilityNote')})];
+      el('p', {class: 'note', text: t('abilityRanksNote')}), el('p', {class: 'note', text: t('abilityNote')})];
   }
 
   function renderCard() {
