@@ -359,9 +359,9 @@ const Engine = (() => {
     const ranks = {Q: 0, W: 0, E: 0, R: 0};
     for (let l = 1; l <= clampLevel(level); l++) {
       if ([6, 11, 16].includes(l) && ranks.R < max.R) { ranks.R++; continue; }
-      const early = l <= 3 ? start[l - 1] : null;
-      if (early && ranks[early] < max[early]) { ranks[early]++; continue; }
       const cap = Math.floor((l + 1) / 2);
+      const early = l <= 3 ? start[l - 1] : null;
+      if (early && ranks[early] < max[early] && ranks[early] < cap) { ranks[early]++; continue; }
       const k = priority.find((key) => ranks[key] < max[key] && ranks[key] < cap);
       if (k) ranks[k]++;
     }

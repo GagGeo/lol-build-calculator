@@ -166,6 +166,10 @@ test('start order picks levels 1-3', () => {
   assert.deepEqual(Engine.skillRanks(STD, 1, ['Q', 'W', 'E'], ['E', 'Q', 'W']), {Q: 0, W: 0, E: 1, R: 0});
   assert.deepEqual(Engine.skillRanks(STD, 3, ['Q', 'W', 'E'], ['Q', 'E', 'Q']), {Q: 2, W: 0, E: 1, R: 0});
 });
+test('start order respects the per-level rank cap', () => {
+  assert.deepEqual(Engine.skillRanks(STD, 2, ['Q', 'W', 'E'], ['Q', 'Q', 'E']), {Q: 1, W: 1, E: 0, R: 0});
+  assert.deepEqual(Engine.skillRanks(STD, 3, ['Q', 'W', 'E'], ['Q', 'Q', 'Q']), {Q: 2, W: 1, E: 0, R: 0});
+});
 test('start order defaults to the max order', () => {
   assert.deepEqual(Engine.skillRanks(STD, 1, ['E', 'Q', 'W']), {Q: 0, W: 0, E: 1, R: 0});
   assert.deepEqual(Engine.skillRanks(STD, 2, ['E', 'Q', 'W']), {Q: 1, W: 0, E: 1, R: 0});
