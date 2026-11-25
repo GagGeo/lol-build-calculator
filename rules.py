@@ -314,6 +314,9 @@ RULES = {
         "Vex": "QEW", "Vi": "QEW", "Viego": "QEW", "Viktor": "EQW", "Vladimir": "QEW", "Xerath": "QWE",
         "Yasuo": "QEW", "Yone": "QWE", "Yorick": "QEW", "Zed": "QEW", "Ziggs": "QEW", "Zilean": "QWE",
     },
+    # What to take at levels 1-3, as 3 letters (repeats allowed, e.g. "QEQ"); written by hand. Champions not
+    # listed follow their max order (Engine.startOrder, shown as "(default)"): add them when you know.
+    "startOrders": {},
     "stackers": {
         "Veigar": {"ap": 1},
         "Thresh": {"armor": 1, "ap": 1},

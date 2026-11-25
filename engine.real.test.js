@@ -339,6 +339,14 @@ test('matchup by level: 18 verdicts; a full build beats no items', () => {
   assert.equal(r[17], 'you');
 });
 
+test('start orders: valid letters, champions exist', () => {
+  for (const [id, o] of Object.entries(D.rules.startOrders || {})) {
+    assert.ok(D.champions[id], id);
+    assert.match(o, /^[QWE]{3}$/, id);
+  }
+  for (const id of Object.keys(D.champions)) assert.equal(Engine.startOrder(D, id).order.length, 3, id);
+});
+
 test('skill orders: hand-written ones are used by default, the rest are estimated', () => {
   for (const [id, o] of Object.entries(D.rules.skillOrders)) {
     assert.ok(D.champions[id], id);

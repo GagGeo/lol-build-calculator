@@ -162,6 +162,14 @@ test('default ranks level 1/6/18', () => {
 });
 test('priority E first', () => assert.equal(Engine.skillRanks(STD, 9, ['E', 'Q', 'W']).E, 5));
 test('basic rank cap by level', () => assert.ok(Engine.skillRanks(STD, 4).Q <= 2));
+test('start order picks levels 1-3', () => {
+  assert.deepEqual(Engine.skillRanks(STD, 1, ['Q', 'W', 'E'], ['E', 'Q', 'W']), {Q: 0, W: 0, E: 1, R: 0});
+  assert.deepEqual(Engine.skillRanks(STD, 3, ['Q', 'W', 'E'], ['Q', 'E', 'Q']), {Q: 2, W: 0, E: 1, R: 0});
+});
+test('start order defaults to the max order', () => {
+  assert.deepEqual(Engine.skillRanks(STD, 1, ['E', 'Q', 'W']), {Q: 0, W: 0, E: 1, R: 0});
+  assert.deepEqual(Engine.skillRanks(STD, 2, ['E', 'Q', 'W']), {Q: 1, W: 0, E: 1, R: 0});
+});
 test('custom ranks follow maxrank', () => {
   const r = Engine.skillRanks(UDYR_LIKE, 18);
   assert.ok(r.Q <= 6 && r.R <= 6);
@@ -209,7 +217,17 @@ test('spell not learned', () => {
   const r = Engine.spellDamage(D2, side({level: 3}), tgt(), 'R');
   assert.equal(r.learned, false); assert.equal(r.damage, 0);
 });
-test('annie-like q after magic resist', () => near(Engine.spellDamage(D2, side(), tgt({mr: 100}), 'Q').damage, 40));
+test('startOrder: hand-written, else the max order by default', () => {
+  const d = {...D2, rules: {...D2.rules, skillOrders: {Annie: 'QWE'}, startOrders: {Annie: 'QEQ'}}};
+  assert.deepEqual(Engine.startOrder(d, 'Annie'), {order: ['Q', 'E', 'Q'], byDefault: false});
+  const d0 = {...d, rules: {...d.rules, startOrders: {}}};
+  assert.deepEqual(Engine.startOrder(d0, 'Annie'), {order: ['Q', 'W', 'E'], byDefault: true});
+});
+test('forced rank overrides the level', () => {
+  near(Engine.spellDamage(D2, {...side({level: 1}), ranks: {Q: 3}}, tgt(), 'Q').damage, 170);
+  assert.equal(Engine.spellDamage(D2, {...side({level: 18}), ranks: {Q: 0}}, tgt(), 'Q').learned, false);
+});
+test('annie-like q after magic resist',() => near(Engine.spellDamage(D2, side(), tgt({mr: 100}), 'Q').damage, 40));
 test('missing health term uses current hp', () =>
   near(Engine.spellDamage(D2, side({level: 6}), tgt({maxHp: 1000, currentHp: 400}), 'R').raw, 150 + 0.25 * 600));
 test('percent-shown max health term is divided by 100', () =>

@@ -354,12 +354,12 @@ const Engine = (() => {
 
   // Ranks at a level: Q/W/E at 1/2/3, R at 6/11/16, otherwise the first ability in `priority`
   // below its max rank and below the basic-ability cap floor((level+1)/2).
-  function skillRanks(champ, level, priority = ['Q', 'W', 'E']) {
+  function skillRanks(champ, level, priority = ['Q', 'W', 'E'], start = priority) {
     const max = Object.fromEntries(champ.spells.filter((s) => s.key !== 'P').map((s) => [s.key, s.maxrank]));
     const ranks = {Q: 0, W: 0, E: 0, R: 0};
     for (let l = 1; l <= clampLevel(level); l++) {
       if ([6, 11, 16].includes(l) && ranks.R < max.R) { ranks.R++; continue; }
-      const early = l <= 3 ? ['Q', 'W', 'E'][l - 1] : null;
+      const early = l <= 3 ? start[l - 1] : null;
       if (early && ranks[early] < max[early]) { ranks[early]++; continue; }
       const cap = Math.floor((l + 1) / 2);
       const k = priority.find((key) => ranks[key] < max[key] && ranks[key] < cap);
@@ -421,11 +421,28 @@ const Engine = (() => {
     return {nonCrit: hit(ad), crit: hit(ad * mult), average: hit(ad * (1 + chance * (mult - 1)))};
   }
 
+  // What to take at levels 1-3: rules.startOrders (written by hand, e.g. "QEW"), else the max order itself.
+  function startOrder(data, champId) {
+    const hand = (data.rules.startOrders || {})[champId];
+    return hand ? {order: hand.split(''), byDefault: false} : {order: skillOrder(data, champId).order, byDefault: true};
+  }
+
+  // A spell's rank: side.ranks[key] when forced (the ranks table), else from the level, the max order and the
+  // levels 1-3 order. The passive is rank 1 from its level on.
+  function spellRank(data, side, key) {
+    if (key === 'P') return clampLevel(side.level) >= ((data.rules.passiveFromLevel || {})[side.champ] || 1) ? 1 : 0;
+    if (side.ranks && key in side.ranks) return side.ranks[key];
+    // Without a hand-written start, levels 1-3 follow the max order in use (skillRanks' default), which also
+    // keeps skillOrder's estimate from asking for itself.
+    const hand = (data.rules.startOrders || {})[side.champ];
+    return skillRanks(data.champions[side.champ], side.level, side.priority || skillOrder(data, side.champ).order,
+      ...(hand ? [hand.split('')] : []))[key];
+  }
+
   function spellDamage(data, side, target, key, lineIndex = 0, shred = {armor: 0, mr: 0}) {
     const champ = data.champions[side.champ];
     const spell = champ.spells.find((s) => s.key === key);
-    const rank = key === 'P' ? (clampLevel(side.level) >= ((data.rules.passiveFromLevel || {})[side.champ] || 1) ? 1 : 0)
-      : skillRanks(champ, side.level, side.priority || skillOrder(data, side.champ).order)[key];
+    const rank = spellRank(data, side, key);
     if (!rank) return {learned: false, rank: 0, raw: 0, damage: 0, type: null, unsupported: []};
     // A spell whose description or game data is missing can't be trusted, even if some lines were read.
     const unsupported = spell.flags.filter((f) => ['unparsed_tooltip', 'no_tooltip', 'no_cdragon_spell'].includes(f));
@@ -478,8 +495,7 @@ const Engine = (() => {
     const champ = data.champions[side.champ];
     const spell = champ.spells.find((s) => s.key === key);
     const none = {heal: 0, unsupported: []};
-    const rank = key === 'P' ? (clampLevel(side.level) >= ((data.rules.passiveFromLevel || {})[side.champ] || 1) ? 1 : 0)
-      : skillRanks(champ, side.level, side.priority || skillOrder(data, side.champ).order)[key];
+    const rank = spellRank(data, side, key);
     const line = rank && (spell.heals || [])[0];
     if (!line) return none;
     if (((data.rules.spellHealsNotInCombo || {})[`${side.champ} ${key}`])) return {...none, skipped: true};
@@ -1127,11 +1143,11 @@ const Engine = (() => {
 
   // Each ability at `level` (no items or runes) against a full 3000-health target with no resists: its damage,
   // and what it scales with: the extra damage from 100 more of each stat, divided by 100 (0.6 = 60% of AP).
-  function spellScaling(data, champId, level) {
+  function spellScaling(data, champId, level, priority) {
     const target = {stats: {base: {hp: 3000}, bonus: {hp: 0}, total: {hp: 3000, armor: 0, mr: 0}}, currentHp: 3000};
     const side = (add) => {
       const d = {...data, rules: {...data.rules, buffs: [{id: 'probe', add}]}};
-      const sel = {champ: champId, level, items: [], runes: null, stacked: false, stacks: 0, buffs: {probe: 1}};
+      const sel = {champ: champId, level, items: [], runes: null, stacked: false, stacks: 0, buffs: {probe: 1}, priority};
       return [d, {...sel, stats: championStats(d, sel)}];
     };
     const [d0, s0] = side({});
@@ -1199,7 +1215,7 @@ const Engine = (() => {
     return {value, efficiency: item.gold.total > 0 ? value / item.gold.total : null, unpriced};
   }
 
-  return {RANKABLE_STATS, bestBuilds, bestRunePage, rankStat, optimizeChampion, statBreakdown, statGoldPrices, goldEfficiency, adviseBuys, rankBuys, purchase, growth, capMoveSpeed, clampLevel, championStats, ultRank, skillOrder, validateBuild, allowedItems, pruneBuild,
+  return {RANKABLE_STATS, bestBuilds, bestRunePage, rankStat, optimizeChampion, statBreakdown, statGoldPrices, goldEfficiency, adviseBuys, rankBuys, purchase, growth, capMoveSpeed, clampLevel, championStats, ultRank, skillOrder, startOrder, validateBuild, allowedItems, pruneBuild,
           validateRunePage, normalizeRunePage, buildCost, goldWarning, evalCalc, skillRanks,
           mitigate, autoAttack, spellDamage, runCombo, counterAdvice, kitScaling, classItems, beginnerBuild, spellScaling, matchupByLevel, buildPath, runePageFrom, DEFAULT_COMBO, defaultCombo, clampPct, spellHeal};
 })();
