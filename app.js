@@ -1146,8 +1146,11 @@ function createChampionsTab(section) {
             ...(r.noRanks ? [el('span', {class: 'ability-desc', text: t('abilityNoRanks')})] : [])));
           if (r.noRanks) return [head];
           const out = [head];
+          // An unreadable damage row only when the game's level-up rows give no damage instead.
           if (r.cells.every((x) => x.unreadable)) {
-            out.push(el('tr', {}, el('th', {scope: 'row', text: t('abilityDamageRow')}), el('td', {colspan: cols, text: t('abilityUnreadable')})));
+            if (!r.levelUp.some((lu) => /damage/i.test(lu.label.en))) {
+              out.push(el('tr', {}, el('th', {scope: 'row', text: t('abilityDamageRow')}), el('td', {colspan: cols, text: t('abilityUnreadable')})));
+            }
           } else if (!r.cells.every((x) => x.noDamage || (!x.unreadable && !x.damage))) {
             // The damage type (and "per hit") goes in the row's label when every rank shares it, numbers in the cells.
             const dealt = r.cells.filter((x) => !x.unreadable && !x.noDamage && x.damage);

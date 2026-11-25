@@ -509,11 +509,11 @@ def passive_stat_words(tooltip):
 LEVEL_UP_VALUE = re.compile(r"\{\{\s*([A-Za-z_]\w*)\s*(?:\*\s*(-?[\d.]+))?\s*\}\}(%?)")
 
 
-def level_up(en, fr, values, skip, maxrank):
+def level_up(en, fr, values, skip, maxrank, base=None):
     """Rows of the game's level-up tooltip (Data Dragon leveltip): [{label: {en, fr}, values: [rank 1..maxrank], pct}].
     Each row's value is the first {{ name[*mult] }}[%] before "->", looked up in the spell's DataValues
-    (case-insensitive). Names in `skip` (lower case) and names that aren't DataValues (cost, cooldown, old
-    effect amounts) are left out."""
+    (case-insensitive). Left out: names in `skip` (lower case), rows equal to `base` (the damage row's flat part,
+    see shown_damage) and names that aren't DataValues (cost, cooldown, old effect amounts)."""
     lower = {k.lower(): v for k, v in values.items()}
     labels_fr = (fr.get("leveltip") or {}).get("label") or []
     tip = en.get("leveltip") or {}
@@ -525,20 +525,33 @@ def level_up(en, fr, values, skip, maxrank):
         if not m or name in skip or not lower.get(name, [])[1:maxrank + 1]:
             continue
         mult = float(m.group(2) or 1)
+        row = [_num(round(v * mult, 3)) for v in lower[name][1:maxrank + 1]]
+        # ponytail: English label test; a damage row with other numbers, or a non-damage row equal by chance, stays.
+        if not m.group(3) and row == base and "damage" in label.lower():
+            continue
         rows.append({"label": {"en": clean(label), "fr": clean(labels_fr[i]) if i < len(labels_fr) else clean(label)},
-                     "values": [_num(round(v * mult, 3)) for v in lower[name][1:maxrank + 1]], "pct": bool(m.group(3))})
+                     "values": row, "pct": bool(m.group(3))})
     return rows
 
 
-def _damage_names(spell):
-    """Lower-case names of the values and calcs a spell's damage lines reach (following refs)."""
+class _NotFlat(Exception):
+    pass
+
+
+def shown_damage(spell, maxrank):
+    """What the table's damage row (the first damage line, computed by the engine) already shows: the lower-case
+    names of the values and calcs it reaches, and its flat part per rank with stats counted as 0 (None when a part
+    depends on level or isn't a plain number). Nothing when there's no line or it can't be read, so the level-up
+    rows fill in. Later lines aren't in the table, so their level-up rows stay."""
+    if not spell["lines"] or _line_unsupported(spell, spell["lines"][0]):
+        return set(), None
+    line = spell["lines"][0]
     names, todo, seen = set(), [], set()
-    for line in spell["lines"]:
-        for term in line["terms"]:
-            if "value" in term:
-                names.add(term["value"].lower())
-            if "calc" in term:
-                todo.append(term["calc"])
+    for term in line["terms"]:
+        if "value" in term:
+            names.add(term["value"].lower())
+        if "calc" in term:
+            todo.append(term["calc"])
     while todo:
         calc = todo.pop()
         if calc in seen:
@@ -552,7 +565,42 @@ def _damage_names(spell):
             elif node.get("t") == "ref" and "name" in node:
                 todo.append(node["name"])
         _walk_nodes(spell["calcs"].get(calc, {}), visit)
-    return names
+
+    def value(name, rank):
+        arr = spell["values"][name]
+        return arr[min(rank, len(arr) - 1)]
+
+    def node(n, rank, visiting):
+        t = n.get("t")
+        if t == "n":
+            return n["n"]
+        if t == "v":
+            return value(n["name"], rank)
+        if t in ("stat", "statOf"):
+            return 0
+        if t == "sum":
+            return sum(node(p, rank, visiting) for p in n["parts"])
+        if t == "prod":
+            return node(n["a"], rank, visiting) * node(n["b"], rank, visiting)
+        if t == "ref":
+            return calc_value(n["name"], rank, visiting)
+        raise _NotFlat  # level-based parts change with the slider
+
+    def calc_value(name, rank, visiting=frozenset()):
+        c = spell["calcs"][name]
+        if name in visiting or c.get("pct"):
+            raise _NotFlat
+        total = sum(node(p, rank, visiting | {name}) for p in c["parts"])
+        return total * node(c["mult"], rank, visiting | {name}) if c.get("mult") else total
+
+    if any(term.get("kind") != "flat" or term.get("percent") for term in line["terms"]):
+        return names, None
+    try:
+        base = [_num(round(sum((calc_value(t["calc"], r) if "calc" in t else value(t["value"], r)) * t.get("mult", 1)
+                                for t in line["terms"]), 3)) for r in range(1, maxrank + 1)]
+    except _NotFlat:
+        return names, None
+    return names, base if any(base) else None
 
 
 def build_spells(dd_en, dd_fr, bin_data, record, strings):
@@ -579,8 +627,9 @@ def build_spells(dd_en, dd_fr, bin_data, record, strings):
         spell["desc"] = {"en": en.get("description", ""), "fr": fr.get("description", "")}
         spell["cooldown"] = en.get("cooldownBurn") if en.get("cooldownBurn") not in (None, "", "0") else None
         spell["cost"] = en.get("costBurn") if "{{ cost }}" in en.get("resource", "") and en.get("costBurn") not in (None, "0") else None
+        shown, base = shown_damage(spell, en["maxrank"])
         spell["levelUp"] = level_up(en, fr, _data_values(entry.get("mSpell") or {}) if entry else {},
-                                    _damage_names(spell), en["maxrank"])
+                                    shown, en["maxrank"], base)
         spells.append(spell)
     return spells
 

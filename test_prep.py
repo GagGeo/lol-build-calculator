@@ -1,6 +1,6 @@
 import unittest
 
-from prep import attach_positions, build_summoners, change_details, parse_item_stats, build_items, build_runes, build_champions, diff_patches, normalize_calc, parse_damage_lines, build_spells, skill_rank_flags, passive_stat_words, parse_heal_lines, level_up
+from prep import attach_positions, build_summoners, change_details, parse_item_stats, build_items, build_runes, build_champions, diff_patches, normalize_calc, parse_damage_lines, build_spells, skill_rank_flags, passive_stat_words, parse_heal_lines, level_up, shown_damage
 
 CLEAVER = ("<mainText><stats><attention>45</attention> Attack Damage<br>"
            "<attention>400</attention> Health<br><attention>20</attention> Ability Haste"
@@ -613,6 +613,39 @@ class LevelUp(unittest.TestCase):
 
     def test_no_leveltip(self):
         self.assertEqual(level_up({}, {}, self.VALUES, set(), 3), [])
+
+
+
+class ShownDamage(unittest.TestCase):
+    """Level-up rows that repeat the table's damage row (line 0) are left out; other lines' rows stay."""
+    SPELL = {"lines": [{"type": "magic", "terms": [{"calc": "Max", "kind": "flat"}]},
+                       {"type": "magic", "terms": [{"value": "Second", "kind": "flat"}]}],
+             "calcs": {"Max": {"parts": [{"t": "ref", "name": "Min"}], "mult": {"t": "n", "n": 3}, "pct": False, "flags": []},
+                       "Min": {"parts": [{"t": "v", "name": "MinBase"},
+                                         {"t": "stat", "stat": "ap", "basis": "total", "coef": {"t": "n", "n": 0.3}}],
+                               "mult": None, "pct": False, "flags": []}},
+             "values": {"MinBase": [0, 20, 30, 40], "Second": [0, 5, 6, 7]}}
+
+    def test_names_and_flat_base_of_line_zero_only(self):
+        self.assertEqual(shown_damage(self.SPELL, 3), ({"max", "min", "minbase"}, [60, 90, 120]))
+
+    def test_unreadable_line_zero_hides_nothing(self):
+        spell = {**self.SPELL, "calcs": {**self.SPELL["calcs"], "Min": {"parts": [{"t": "x", "what": "Odd"}],
+                                                                          "mult": None, "pct": False, "flags": []}}}
+        self.assertEqual(shown_damage(spell, 3), (set(), None))
+
+    def test_level_up_skips_rows_equal_to_the_damage_row(self):
+        en = {"leveltip": {"label": ["Maximum Damage", "Second Hit"],
+                           "effect": ["{{ maxbase }} -> {{ x }}", "{{ second }} -> {{ x }}"]}}
+        values = {"MaxBase": [0, 60, 90, 120], "Second": [0, 5, 6, 7]}
+        names, base = shown_damage(self.SPELL, 3)
+        rows = level_up(en, {}, values, names, 3, base)
+        self.assertEqual([r["label"]["en"] for r in rows], ["Second Hit"])
+
+    def test_equal_numbers_that_are_not_damage_stay(self):
+        en = {"leveltip": {"label": ["Shield Amount"], "effect": ["{{ shield }} -> {{ x }}"]}}
+        rows = level_up(en, {}, {"Shield": [0, 60, 90, 120]}, set(), 3, [60, 90, 120])
+        self.assertEqual([r["label"]["en"] for r in rows], ["Shield Amount"])
 
 
 if __name__ == "__main__":
