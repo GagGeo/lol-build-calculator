@@ -1162,6 +1162,26 @@ const Engine = (() => {
     });
   }
 
+  // Each basic ability and the ultimate at every rank, at `level` (no items or runes, same target as spellScaling):
+  // damage, and that rank's cooldown and cost from the game's "9/8/7/6/5" strings (one value = every rank).
+  function spellRankTable(data, champId, level) {
+    const target = {stats: {base: {hp: 3000}, bonus: {hp: 0}, total: {hp: 3000, armor: 0, mr: 0}}, currentHp: 3000};
+    const sel = {champ: champId, level, items: [], runes: null, stacked: false, stacks: 0};
+    const side = {...sel, stats: championStats(data, sel)};
+    const part = (str, rank) => {
+      if (str === undefined || str === null || str === '') return null;
+      const parts = String(str).split('/');
+      return parts[rank - 1] ?? parts[0];
+    };
+    return data.champions[champId].spells.filter((s) => s.key !== 'P').map((spell) => ({key: spell.key, name: spell.name,
+      cells: Array.from({length: spell.maxrank}, (_, i) => {
+        const rank = i + 1, r = spellDamage(data, {...side, ranks: {[spell.key]: rank}}, target, spell.key);
+        const unreadable = r.unsupported.length > 0, ok = !unreadable && !r.noDamage;
+        return {rank, damage: ok ? r.damage : 0, type: r.type, perHit: r.perHit, unreadable, noDamage: !!r.noDamage,
+          cooldown: part(spell.cooldown, rank), cost: part(spell.cost, rank)};
+      })}));
+  }
+
   // Who wins a full trade at each level (both champions at that level, with their current items and runes):
   // the side whose combo leaves the other with the smaller share of health. 'you', 'them' or 'even'.
   function matchupByLevel(data, you, enemy) {
@@ -1217,7 +1237,7 @@ const Engine = (() => {
 
   return {RANKABLE_STATS, bestBuilds, bestRunePage, rankStat, optimizeChampion, statBreakdown, statGoldPrices, goldEfficiency, adviseBuys, rankBuys, purchase, growth, capMoveSpeed, clampLevel, championStats, ultRank, skillOrder, startOrder, validateBuild, allowedItems, pruneBuild,
           validateRunePage, normalizeRunePage, buildCost, goldWarning, evalCalc, skillRanks,
-          mitigate, autoAttack, spellDamage, runCombo, counterAdvice, kitScaling, classItems, beginnerBuild, spellScaling, matchupByLevel, buildPath, runePageFrom, DEFAULT_COMBO, defaultCombo, clampPct, spellHeal};
+          mitigate, autoAttack, spellDamage, runCombo, counterAdvice, kitScaling, classItems, beginnerBuild, spellScaling, spellRankTable, matchupByLevel, buildPath, runePageFrom, DEFAULT_COMBO, defaultCombo, clampPct, spellHeal};
 })();
 
 if (typeof module === 'object') module.exports = Engine;

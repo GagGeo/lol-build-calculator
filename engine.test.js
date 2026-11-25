@@ -227,7 +227,29 @@ test('forced rank overrides the level', () => {
   near(Engine.spellDamage(D2, {...side({level: 1}), ranks: {Q: 3}}, tgt(), 'Q').damage, 170);
   assert.equal(Engine.spellDamage(D2, {...side({level: 18}), ranks: {Q: 0}}, tgt(), 'Q').learned, false);
 });
-test('annie-like q after magic resist',() => near(Engine.spellDamage(D2, side(), tgt({mr: 100}), 'Q').damage, 40));
+test('rank table: one cell per rank, damage at each rank', () => {
+  const D3 = {...D2, champions: {...D2.champions, Annie: {...D2.champions.Annie,
+    spells: D2.champions.Annie.spells.map((s) => (s.key === 'Q' ? {...s, cooldown: '7', cost: '55/65/75/85/95'} : s))}}};
+  const rows = Engine.spellRankTable(D3, 'Annie', 1);
+  assert.deepEqual(rows.map((r) => r.key), ['Q', 'W', 'E', 'R']);
+  const q = rows[0];
+  assert.equal(q.cells.length, 5);
+  near(q.cells[2].damage, 170);
+  assert.equal(q.cells[4].cooldown, '7');
+  assert.equal(q.cells[1].cost, '65');
+  assert.equal(rows[3].cells.length, 3);
+  assert.equal(rows[3].cells[0].cooldown, null);
+});
+test('rank table: unreadable ability has no damage', () => {
+  const w = Engine.spellRankTable(D2, 'Annie', 1)[1];
+  assert.ok(w.cells.every((c) => c.unreadable && c.damage === 0));
+});
+test('rank table: six-rank abilities get six cells', () => {
+  const d = {...D2, champions: {...D2.champions, Annie: {...D2.champions.Annie,
+    spells: D2.champions.Annie.spells.map((s) => (s.key === 'Q' ? {...s, maxrank: 6} : s))}}};
+  assert.equal(Engine.spellRankTable(d, 'Annie', 18)[0].cells.length, 6);
+});
+test('annie-like q after magic resist', () => near(Engine.spellDamage(D2, side(), tgt({mr: 100}), 'Q').damage, 40));
 test('missing health term uses current hp', () =>
   near(Engine.spellDamage(D2, side({level: 6}), tgt({maxHp: 1000, currentHp: 400}), 'R').raw, 150 + 0.25 * 600));
 test('percent-shown max health term is divided by 100', () =>
