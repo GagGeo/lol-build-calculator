@@ -506,6 +506,55 @@ def passive_stat_words(tooltip):
     return bool(PASSIVE_STAT.search(TAG.sub(" ", DAMAGE_TAG.sub(" ", tooltip or ""))))
 
 
+LEVEL_UP_VALUE = re.compile(r"\{\{\s*([A-Za-z_]\w*)\s*(?:\*\s*(-?[\d.]+))?\s*\}\}(%?)")
+
+
+def level_up(en, fr, values, skip, maxrank):
+    """Rows of the game's level-up tooltip (Data Dragon leveltip): [{label: {en, fr}, values: [rank 1..maxrank], pct}].
+    Each row's value is the first {{ name[*mult] }}[%] before "->", looked up in the spell's DataValues
+    (case-insensitive). Names in `skip` (lower case) and names that aren't DataValues (cost, cooldown, old
+    effect amounts) are left out."""
+    lower = {k.lower(): v for k, v in values.items()}
+    labels_fr = (fr.get("leveltip") or {}).get("label") or []
+    tip = en.get("leveltip") or {}
+    clean = lambda text: re.sub(r"@\w+@", "", text).strip(" :")
+    rows = []
+    for i, (label, effect) in enumerate(zip(tip.get("label") or [], tip.get("effect") or [])):
+        m = LEVEL_UP_VALUE.search(effect.split("->")[0])
+        name = m.group(1).lower() if m else None
+        if not m or name in skip or not lower.get(name, [])[1:maxrank + 1]:
+            continue
+        mult = float(m.group(2) or 1)
+        rows.append({"label": {"en": clean(label), "fr": clean(labels_fr[i]) if i < len(labels_fr) else clean(label)},
+                     "values": [_num(round(v * mult, 3)) for v in lower[name][1:maxrank + 1]], "pct": bool(m.group(3))})
+    return rows
+
+
+def _damage_names(spell):
+    """Lower-case names of the values and calcs a spell's damage lines reach (following refs)."""
+    names, todo, seen = set(), [], set()
+    for line in spell["lines"]:
+        for term in line["terms"]:
+            if "value" in term:
+                names.add(term["value"].lower())
+            if "calc" in term:
+                todo.append(term["calc"])
+    while todo:
+        calc = todo.pop()
+        if calc in seen:
+            continue
+        seen.add(calc)
+        names.add(calc.lower())
+
+        def visit(node):
+            if node.get("t") == "v" and "name" in node:
+                names.add(node["name"].lower())
+            elif node.get("t") == "ref" and "name" in node:
+                todo.append(node["name"])
+        _walk_nodes(spell["calcs"].get(calc, {}), visit)
+    return names
+
+
 def build_spells(dd_en, dd_fr, bin_data, record, strings):
     """Passive + Q/W/E/R in DATA spell shape, from a Data Dragon champion, its CommunityDragon file and the string table."""
     lower = {k.lower(): v for k, v in bin_data.items() if isinstance(v, dict)}
@@ -528,8 +577,10 @@ def build_spells(dd_en, dd_fr, bin_data, record, strings):
                            en.get("tooltip", ""), entry.get("mSpell") if entry else None)
         # Plain description, cooldown and cost per rank ("8/7/6"); cost only when it is paid in the resource.
         spell["desc"] = {"en": en.get("description", ""), "fr": fr.get("description", "")}
-        spell["cooldown"] = en.get("cooldownBurn") or None
+        spell["cooldown"] = en.get("cooldownBurn") if en.get("cooldownBurn") not in (None, "", "0") else None
         spell["cost"] = en.get("costBurn") if "{{ cost }}" in en.get("resource", "") and en.get("costBurn") not in (None, "0") else None
+        spell["levelUp"] = level_up(en, fr, _data_values(entry.get("mSpell") or {}) if entry else {},
+                                    _damage_names(spell), en["maxrank"])
         spells.append(spell)
     return spells
 

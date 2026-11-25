@@ -317,6 +317,16 @@ RULES = {
     # What to take at levels 1-3, as 3 letters (repeats allowed, e.g. "QEQ"); written by hand. Champions not
     # listed follow their max order (Engine.startOrder, shown as "(default)"): add them when you know.
     "startOrders": {},
+    # Champions that rank abilities differently (League wiki, checked 2026-11-25). basicR: R is a basic ability
+    # (no 6/11/16 step; max orders include R). free: ranks given at level 1 without a skill point. noRanks: abilities
+    # that stay rank 1 (Aphelios spends his points on stats, not counted here).
+    "skillRankRules": {
+        "Udyr": {"basicR": True},
+        "Jayce": {"free": {"R": 1}}, "Elise": {"free": {"R": 1}}, "Nidalee": {"free": {"R": 1}},
+        "Karma": {"free": {"R": 1}},
+        "Yuumi": {"free": {"W": 1}},
+        "Aphelios": {"noRanks": ["Q", "W", "E"]},
+    },
     "stackers": {
         "Veigar": {"ap": 1},
         "Thresh": {"armor": 1, "ap": 1},

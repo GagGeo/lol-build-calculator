@@ -1,6 +1,6 @@
 import unittest
 
-from prep import attach_positions, build_summoners, change_details, parse_item_stats, build_items, build_runes, build_champions, diff_patches, normalize_calc, parse_damage_lines, build_spells, skill_rank_flags, passive_stat_words, parse_heal_lines
+from prep import attach_positions, build_summoners, change_details, parse_item_stats, build_items, build_runes, build_champions, diff_patches, normalize_calc, parse_damage_lines, build_spells, skill_rank_flags, passive_stat_words, parse_heal_lines, level_up
 
 CLEAVER = ("<mainText><stats><attention>45</attention> Attack Damage<br>"
            "<attention>400</attention> Health<br><attention>20</attention> Ability Haste"
@@ -589,6 +589,25 @@ class SummonersAndChangesTest(unittest.TestCase):
         champs = {"Ahri": {}}
         attach_positions(champs, {"Ahri": {"positions": ["MIDDLE"], "attributeRatings": {"damage": 3, "toughness": 1, "abilityReliance": 100}}})
         self.assertEqual(champs["Ahri"]["ratings"], {"damage": 3, "toughness": 1})
+
+
+
+class LevelUp(unittest.TestCase):
+    EN = {"leveltip": {"label": ["Move Speed", "Damage", "@AbilityResourceName@ Cost", "Range", "Shield"],
+                       "effect": ["{{ basemovespeed*100.000000 }}% -> {{ basemovespeednl*100.000000 }}%",
+                                  "{{ basedamage }} -> {{ basedamageNL }}", "{{ cost }} -> {{ costNL }}",
+                                  "{{ castrange }} -> {{ castrangeNL }}", "{{ ShieldBase }} -> {{ shieldbaseNL }}"]}}
+    FR = {"leveltip": {"label": ["Vitesse de déplacement", "Dégâts", "Coût en @AbilityResourceName@", "Portée", "Bouclier"]}}
+    VALUES = {"BaseMoveSpeed": [0, 0.25, 0.31, 0.37], "BaseDamage": [0, 10, 20, 30], "ShieldBase": [0, 45, 65, 85]}
+
+    def test_rows_per_rank_with_labels_and_percent(self):
+        rows = level_up(self.EN, self.FR, self.VALUES, {"basedamage"}, 3)
+        self.assertEqual(rows, [
+            {"label": {"en": "Move Speed", "fr": "Vitesse de déplacement"}, "values": [25, 31, 37], "pct": True},
+            {"label": {"en": "Shield", "fr": "Bouclier"}, "values": [45, 65, 85], "pct": False}])
+
+    def test_no_leveltip(self):
+        self.assertEqual(level_up({}, {}, self.VALUES, set(), 3), [])
 
 
 if __name__ == "__main__":

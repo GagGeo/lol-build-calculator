@@ -99,4 +99,4 @@ const champWithSpells = (ranks) => ({spells: ['P', 'Q', 'W', 'E', 'R'].map((k) =
 const STD = champWithSpells({});
 const UDYR_LIKE = champWithSpells({Q: 6, W: 6, E: 6, R: 6});
 
-module.exports = {D, VALID_PAGE, QSPELL, MIXSPELL, STD, UDYR_LIKE, spell};
+module.exports = {D, VALID_PAGE, QSPELL, MIXSPELL, STD, UDYR_LIKE, champWithSpells, spell};

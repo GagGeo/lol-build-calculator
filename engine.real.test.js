@@ -339,6 +339,20 @@ test('matchup by level: 18 verdicts; a full build beats no items', () => {
   assert.equal(r[17], 'you');
 });
 
+test('rank rules: every custom-rank champion has one, and ranks stay within max ranks', () => {
+  const rules = D.rules.skillRankRules;
+  for (const c of Object.values(D.champions).filter((x) => x.flags.includes('custom_skill_ranks'))) assert.ok(rules[c.id], c.id);
+  for (const id of Object.keys(rules)) {
+    const max = Object.fromEntries(D.champions[id].spells.map((s) => [s.key, s.maxrank]));
+    for (let level = 1; level <= 18; level++) {
+      const r = Engine.abilityRanks(D, id, level);
+      for (const k of ['Q', 'W', 'E', 'R']) assert.ok(r[k] <= max[k], `${id} ${k} at ${level}`);
+    }
+  }
+  assert.deepEqual(Engine.abilityRanks(D, 'Elise', 1).R, 1);
+  assert.equal(Engine.abilityRanks(D, 'Udyr', 18, ['R', 'Q', 'W', 'E']).R, 6);
+});
+
 test('start orders: valid letters, champions exist', () => {
   for (const [id, o] of Object.entries(D.rules.startOrders || {})) {
     assert.ok(D.champions[id], id);
@@ -353,7 +367,7 @@ test('skill orders: hand-written ones are used by default, the rest are estimate
     assert.deepEqual([...o].sort(), ['E', 'Q', 'W'], id);
   }
   assert.deepEqual(Engine.skillOrder(D, 'Garen'), {order: ['E', 'Q', 'W'], estimated: false});
-  for (const id of Object.keys(D.champions)) assert.equal(Engine.skillOrder(D, id).order.length, 3, id);
+  for (const id of Object.keys(D.champions)) assert.equal(Engine.skillOrder(D, id).order.length, Engine.orderChoices(D, id)[0].length, id);
   assert.ok(Engine.skillOrder(D, 'Locke').estimated);
   // Garen maxes E first: at level 9 his E is rank 5 without any priority given.
   const sel = {champ: 'Garen', level: 9, items: [], runes: null, stacked: false, stacks: 0};

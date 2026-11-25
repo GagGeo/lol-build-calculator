@@ -131,7 +131,7 @@ test('base health regen percent multiplies base regen', () => {
 test('crit chance is capped at 100', () => near(stats({items: ['critI', 'critI']}).total.crit, 100));
 
 // Stage 2, Task 3: formulas and skill ranks.
-const {QSPELL, MIXSPELL, STD, UDYR_LIKE} = require('./fixture.js');
+const {QSPELL, MIXSPELL, STD, UDYR_LIKE, champWithSpells} = require('./fixture.js');
 const ctx = (o = {}) => ({rank: o.rank ?? 1, level: o.level ?? 1, rules: {...D.rules, critBase: 1.75},
   stats: {base: {ad: 60, hp: 600}, bonus: {ad: o.bonusAd || 0, critDmg: o.critDmg || 0, hp: o.bonusHp || 0},
           total: {ad: 60 + (o.bonusAd || 0), ap: o.ap || 0, hp: 600 + (o.bonusHp || 0)}}});
@@ -165,6 +165,23 @@ test('basic rank cap by level', () => assert.ok(Engine.skillRanks(STD, 4).Q <= 2
 test('start order picks levels 1-3', () => {
   assert.deepEqual(Engine.skillRanks(STD, 1, ['Q', 'W', 'E'], ['E', 'Q', 'W']), {Q: 0, W: 0, E: 1, R: 0});
   assert.deepEqual(Engine.skillRanks(STD, 3, ['Q', 'W', 'E'], ['Q', 'E', 'Q']), {Q: 2, W: 0, E: 1, R: 0});
+});
+test('rank rules: Udyr-like R ranks like a basic', () => {
+  assert.deepEqual(Engine.skillRanks(UDYR_LIKE, 6, ['R', 'Q', 'W', 'E'], undefined, {basicR: true}), {Q: 2, W: 1, E: 0, R: 3});
+  assert.deepEqual(Engine.skillRanks(UDYR_LIKE, 9, ['R', 'Q', 'W', 'E'], undefined, {basicR: true}), {Q: 3, W: 1, E: 0, R: 5});
+});
+test('rank rules: free R rank 1 (Elise-like)', () => {
+  const elise = champWithSpells({R: 4});
+  assert.deepEqual(Engine.skillRanks(elise, 1, ['Q', 'W', 'E'], undefined, {free: {R: 1}}), {Q: 1, W: 0, E: 0, R: 1});
+  assert.deepEqual(Engine.skillRanks(elise, 6, ['Q', 'W', 'E'], undefined, {free: {R: 1}}), {Q: 3, W: 1, E: 1, R: 2});
+  assert.deepEqual(Engine.skillRanks(elise, 18, ['Q', 'W', 'E'], undefined, {free: {R: 1}}), {Q: 5, W: 5, E: 5, R: 4});
+});
+test('rank rules: free W rank 1 (Yuumi-like)', () =>
+  assert.deepEqual(Engine.skillRanks(champWithSpells({Q: 6}), 3, ['Q', 'E', 'W'], undefined, {free: {W: 1}}), {Q: 1, W: 2, E: 1, R: 0}));
+test('rank rules: abilities without ranks stay rank 1 (Aphelios-like)', () => {
+  const rule = {noRanks: ['Q', 'W', 'E']};
+  assert.deepEqual(Engine.skillRanks(UDYR_LIKE, 1, ['Q', 'W', 'E'], undefined, rule), {Q: 1, W: 1, E: 1, R: 0});
+  assert.deepEqual(Engine.skillRanks(STD, 18, ['Q', 'W', 'E'], undefined, rule), {Q: 1, W: 1, E: 1, R: 3});
 });
 test('start order respects the per-level rank cap', () => {
   assert.deepEqual(Engine.skillRanks(STD, 2, ['Q', 'W', 'E'], ['Q', 'Q', 'E']), {Q: 1, W: 1, E: 0, R: 0});
@@ -230,6 +247,23 @@ test('startOrder: hand-written, else the max order by default', () => {
 test('forced rank overrides the level', () => {
   near(Engine.spellDamage(D2, {...side({level: 1}), ranks: {Q: 3}}, tgt(), 'Q').damage, 170);
   assert.equal(Engine.spellDamage(D2, {...side({level: 18}), ranks: {Q: 0}}, tgt(), 'Q').learned, false);
+});
+test('order choices: 6 orders, or 24 when R ranks like a basic', () => {
+  assert.equal(Engine.orderChoices(D2, 'Annie').length, 6);
+  const d = {...D2, rules: {...D2.rules, skillRankRules: {Annie: {basicR: true}}}};
+  assert.equal(Engine.orderChoices(d, 'Annie').length, 24);
+  assert.equal(Engine.skillOrder(d, 'Annie').order.length, 4);
+});
+test('abilityRanks gives the ranks spellDamage uses', () => {
+  const d = {...D2, rules: {...D2.rules, skillRankRules: {Annie: {free: {R: 1}}}}};
+  const ranks = Engine.abilityRanks(d, 'Annie', 1, ['Q', 'W', 'E']);
+  assert.equal(ranks.R, 1);
+  assert.equal(Engine.spellDamage(d, side({level: 1}), tgt(), 'R').rank, 1);
+});
+test('rank table: abilities without ranks are marked', () => {
+  const d = {...D2, rules: {...D2.rules, skillRankRules: {Annie: {noRanks: ['Q', 'W', 'E']}}}};
+  const rows = Engine.spellRankTable(d, 'Annie', 9);
+  assert.ok(rows[0].noRanks && !rows[3].noRanks);
 });
 test('rank table: one cell per rank, damage at each rank', () => {
   const D3 = {...D2, champions: {...D2.champions, Annie: {...D2.champions.Annie,
