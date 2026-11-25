@@ -517,7 +517,7 @@ def level_up(en, fr, values, skip, maxrank):
     lower = {k.lower(): v for k, v in values.items()}
     labels_fr = (fr.get("leveltip") or {}).get("label") or []
     tip = en.get("leveltip") or {}
-    clean = lambda text: re.sub(r"@\w+@", "", text).strip(" :")
+    clean = lambda text: re.sub(r"<[^>]+>|@\w+@", "", text).strip(" :")
     rows = []
     for i, (label, effect) in enumerate(zip(tip.get("label") or [], tip.get("effect") or [])):
         m = LEVEL_UP_VALUE.search(effect.split("->")[0])

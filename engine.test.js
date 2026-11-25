@@ -166,9 +166,11 @@ test('start order picks levels 1-3', () => {
   assert.deepEqual(Engine.skillRanks(STD, 1, ['Q', 'W', 'E'], ['E', 'Q', 'W']), {Q: 0, W: 0, E: 1, R: 0});
   assert.deepEqual(Engine.skillRanks(STD, 3, ['Q', 'W', 'E'], ['Q', 'E', 'Q']), {Q: 2, W: 0, E: 1, R: 0});
 });
-test('rank rules: Udyr-like R ranks like a basic', () => {
-  assert.deepEqual(Engine.skillRanks(UDYR_LIKE, 6, ['R', 'Q', 'W', 'E'], undefined, {basicR: true}), {Q: 2, W: 1, E: 0, R: 3});
-  assert.deepEqual(Engine.skillRanks(UDYR_LIKE, 9, ['R', 'Q', 'W', 'E'], undefined, {basicR: true}), {Q: 3, W: 1, E: 0, R: 5});
+test('rank rules: Udyr-like R ranks like a basic, all four learned by level 4', () => {
+  assert.deepEqual(Engine.skillRanks(UDYR_LIKE, 4, ['R', 'Q', 'W', 'E'], undefined, {basicR: true}), {Q: 1, W: 1, E: 1, R: 1});
+  assert.deepEqual(Engine.skillRanks(UDYR_LIKE, 6, ['R', 'Q', 'W', 'E'], undefined, {basicR: true}), {Q: 1, W: 1, E: 1, R: 3});
+  assert.deepEqual(Engine.skillRanks(UDYR_LIKE, 18, ['R', 'Q', 'W', 'E'], undefined, {basicR: true}), {Q: 6, W: 5, E: 1, R: 6});
+  assert.deepEqual(Engine.skillRanks(UDYR_LIKE, 4, ['Q', 'W', 'E'], ['Q', 'W', 'E'], {basicR: true}), {Q: 1, W: 1, E: 1, R: 1});
 });
 test('rank rules: free R rank 1 (Elise-like)', () => {
   const elise = champWithSpells({R: 4});

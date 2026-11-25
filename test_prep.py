@@ -606,6 +606,11 @@ class LevelUp(unittest.TestCase):
             {"label": {"en": "Move Speed", "fr": "Vitesse de déplacement"}, "values": [25, 31, 37], "pct": True},
             {"label": {"en": "Shield", "fr": "Bouclier"}, "values": [45, 65, 85], "pct": False}])
 
+    def test_labels_lose_markup(self):
+        en = {"leveltip": {"label": ["<spellName>Fiery</spellName> Damage"], "effect": ["{{ ShieldBase }} -> {{ x }}"]}}
+        fr = {"leveltip": {"label": ["Dégâts de <spellName>Feu</spellName>"]}}
+        self.assertEqual(level_up(en, fr, self.VALUES, set(), 3)[0]["label"], {"en": "Fiery Damage", "fr": "Dégâts de Feu"})
+
     def test_no_leveltip(self):
         self.assertEqual(level_up({}, {}, self.VALUES, set(), 3), [])
 

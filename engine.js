@@ -360,11 +360,13 @@ const Engine = (() => {
     const max = Object.fromEntries(champ.spells.filter((s) => s.key !== 'P').map((s) => [s.key, s.maxrank]));
     const fixed = rule.noRanks || [];
     const order = (rule.basicR && !priority.includes('R') ? [...priority, 'R'] : priority).filter((k) => !fixed.includes(k));
+    // With R as a basic (Udyr), the opening covers 4 levels so every ability is learned once.
+    const opening = rule.basicR ? [...start, ...order.filter((k) => !start.includes(k))].slice(0, 4) : start;
     const ranks = {Q: 0, W: 0, E: 0, R: 0, ...rule.free};
     for (let l = 1; l <= clampLevel(level); l++) {
       if (!rule.basicR && [6, 11, 16].includes(l) && ranks.R < max.R) { ranks.R++; continue; }
       const cap = Math.floor((l + 1) / 2);
-      const early = l <= 3 ? start[l - 1] : null;
+      const early = l <= Math.max(3, opening.length) ? opening[l - 1] : null;
       if (early && order.includes(early) && ranks[early] < max[early] && ranks[early] < cap) { ranks[early]++; continue; }
       const k = order.find((key) => ranks[key] < max[key] && ranks[key] < cap);
       if (k) ranks[k]++;
