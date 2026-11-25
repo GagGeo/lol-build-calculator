@@ -178,8 +178,13 @@ test('rank rules: free R rank 1 (Elise-like)', () => {
   assert.deepEqual(Engine.skillRanks(elise, 6, ['Q', 'W', 'E'], undefined, {free: {R: 1}}), {Q: 3, W: 1, E: 1, R: 2});
   assert.deepEqual(Engine.skillRanks(elise, 18, ['Q', 'W', 'E'], undefined, {free: {R: 1}}), {Q: 5, W: 5, E: 5, R: 4});
 });
-test('rank rules: free W rank 1 (Yuumi-like)', () =>
-  assert.deepEqual(Engine.skillRanks(champWithSpells({Q: 6}), 3, ['Q', 'E', 'W'], undefined, {free: {W: 1}}), {Q: 1, W: 2, E: 1, R: 0}));
+test('rank rules: free W rank 1 (Yuumi-like), the opening learns the other two', () => {
+  const yuumi = champWithSpells({Q: 6});
+  assert.deepEqual(Engine.skillRanks(yuumi, 1, ['Q', 'W', 'E'], undefined, {free: {W: 1}}), {Q: 1, W: 1, E: 0, R: 0});
+  assert.deepEqual(Engine.skillRanks(yuumi, 2, ['Q', 'W', 'E'], undefined, {free: {W: 1}}), {Q: 1, W: 1, E: 1, R: 0});
+  assert.deepEqual(Engine.skillRanks(yuumi, 3, ['Q', 'W', 'E'], undefined, {free: {W: 1}}), {Q: 2, W: 1, E: 1, R: 0});
+  assert.deepEqual(Engine.skillRanks(yuumi, 3, ['Q', 'E', 'W'], undefined, {free: {W: 1}}), {Q: 2, W: 1, E: 1, R: 0});
+});
 test('rank rules: abilities without ranks stay rank 1 (Aphelios-like)', () => {
   const rule = {noRanks: ['Q', 'W', 'E']};
   assert.deepEqual(Engine.skillRanks(UDYR_LIKE, 1, ['Q', 'W', 'E'], undefined, rule), {Q: 1, W: 1, E: 1, R: 0});

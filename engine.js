@@ -360,8 +360,11 @@ const Engine = (() => {
     const max = Object.fromEntries(champ.spells.filter((s) => s.key !== 'P').map((s) => [s.key, s.maxrank]));
     const fixed = rule.noRanks || [];
     const order = (rule.basicR && !priority.includes('R') ? [...priority, 'R'] : priority).filter((k) => !fixed.includes(k));
-    // With R as a basic (Udyr), the opening covers 4 levels so every ability is learned once.
-    const opening = rule.basicR ? [...start, ...order.filter((k) => !start.includes(k))].slice(0, 4) : start;
+    // With R as a basic (Udyr), the opening covers 4 levels so every ability is learned once. Abilities given
+    // for free (Yuumi's W) are already learned, so the opening skips them and learns the others.
+    const given = Object.keys(rule.free || {});
+    const opening = (rule.basicR ? [...start, ...order.filter((k) => !start.includes(k))].slice(0, 4) : start)
+      .filter((k) => !given.includes(k));
     const ranks = {Q: 0, W: 0, E: 0, R: 0, ...rule.free};
     for (let l = 1; l <= clampLevel(level); l++) {
       if (!rule.basicR && [6, 11, 16].includes(l) && ranks.R < max.R) { ranks.R++; continue; }
