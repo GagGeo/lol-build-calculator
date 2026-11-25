@@ -336,6 +336,11 @@ const Engine = (() => {
           return sum + add + (perLevel || 0) * (last - at + 1);
         }, 0);
         case 'lvlLerp': return n.a + (n.b - n.a) * (ctx.level - 1) / 17;
+        case 'lvlTable': return n.values[Math.min(ctx.level, n.values.length) - 1];
+        case 'lerp': { const a = node(n.a); return a + (node(n.b) - a) * (ctx.level - 1) / 17; }
+        case 'perLvl': return node(n.base) + node(n.per) * (ctx.level - 1);
+        // A buff counter: the champion's own stacks (the "stacks" field; 0 when not given).
+        case 'stacks': return (ctx.stacks || 0) * node(n.coef);
         case 'sum': return n.parts.reduce((s, p) => s + node(p), 0);
         case 'prod': return node(n.a) * node(n.b);
         case 'ref': {
@@ -383,6 +388,16 @@ const Engine = (() => {
     : keys.flatMap((k, i) => permutations([...keys.slice(0, i), ...keys.slice(i + 1)]).map((p) => k + p)));
   function orderChoices(data, champId) {
     return ((data.rules.skillRankRules || {})[champId] || {}).basicR ? permutations('QWER'.split('')) : ORDERS;
+  }
+
+  // Whether stacks matter for a champion: a stat per stack (rules.stackers) or a spell that counts its stacks.
+  const stackCache = new WeakMap();
+  function usesStacks(data, champId) {
+    if (data.rules.stackers[champId]) return true;
+    if (!stackCache.has(data)) stackCache.set(data, {});
+    const cache = stackCache.get(data);
+    if (!(champId in cache)) cache[champId] = JSON.stringify(data.champions[champId].spells.map((x) => x.calcs)).includes('"t":"stacks"');
+    return cache[champId];
   }
 
   // The order a champion maxes its basic abilities: rules.skillOrders (written by hand), else an estimate: the
@@ -484,7 +499,7 @@ const Engine = (() => {
       return unsupported.length ? {learned: true, rank, raw: 0, damage: 0, type: null, unsupported}
         : {learned: true, rank, raw: 0, damage: 0, type: null, noDamage: true, unsupported};
     }
-    const ctx = {rank, level: clampLevel(side.level), stats: side.stats, rules: data.rules};
+    const ctx = {rank, level: clampLevel(side.level), stats: side.stats, rules: data.rules, stacks: side.stacks};
     const maxHp = target.stats.total.hp || 0;
     const current = target.currentHp ?? maxHp;
     let raw = 0;
@@ -534,7 +549,7 @@ const Engine = (() => {
     if (((data.rules.spellHealsNotInCombo || {})[`${side.champ} ${key}`])) return {...none, skipped: true};
     if ((data.rules.spellHealsUnknown || {})[`${side.champ} ${key}`]) return {...none, unsupported: ['heal not readable']};
     const unsupported = [];
-    const ctx = {rank, level: clampLevel(side.level), stats: side.stats, rules: data.rules};
+    const ctx = {rank, level: clampLevel(side.level), stats: side.stats, rules: data.rules, stacks: side.stacks};
     const maxHp = side.stats.total.hp || 0, selfHp = o.selfHp ?? maxHp;
     let heal = 0;
     for (const term of line.terms) {
@@ -1271,7 +1286,7 @@ const Engine = (() => {
     return {value, efficiency: item.gold.total > 0 ? value / item.gold.total : null, unpriced};
   }
 
-  return {RANKABLE_STATS, bestBuilds, bestRunePage, rankStat, optimizeChampion, statBreakdown, statGoldPrices, goldEfficiency, adviseBuys, rankBuys, purchase, growth, capMoveSpeed, clampLevel, championStats, ultRank, skillOrder, startOrder, orderChoices, abilityRanks, validateBuild, allowedItems, pruneBuild,
+  return {RANKABLE_STATS, bestBuilds, bestRunePage, rankStat, optimizeChampion, statBreakdown, statGoldPrices, goldEfficiency, adviseBuys, rankBuys, purchase, growth, capMoveSpeed, clampLevel, championStats, ultRank, skillOrder, startOrder, orderChoices, abilityRanks, usesStacks, validateBuild, allowedItems, pruneBuild,
           validateRunePage, normalizeRunePage, buildCost, goldWarning, evalCalc, skillRanks,
           mitigate, autoAttack, spellDamage, runCombo, counterAdvice, kitScaling, classItems, beginnerBuild, spellScaling, spellRankTable, matchupByLevel, buildPath, runePageFrom, DEFAULT_COMBO, defaultCombo, clampPct, spellHeal};
 })();

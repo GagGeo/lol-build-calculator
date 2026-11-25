@@ -1,6 +1,6 @@
 import unittest
 
-from prep import attach_positions, build_summoners, change_details, parse_item_stats, build_items, build_runes, build_champions, diff_patches, normalize_calc, parse_damage_lines, build_spells, skill_rank_flags, passive_stat_words, parse_heal_lines, level_up, shown_damage
+from prep import attach_positions, build_summoners, change_details, parse_item_stats, build_items, build_runes, build_champions, diff_patches, normalize_calc, parse_damage_lines, build_spells, skill_rank_flags, passive_stat_words, parse_heal_lines, level_up, shown_damage, normalize_part, _one_spell
 
 CLEAVER = ("<mainText><stats><attention>45</attention> Attack Damage<br>"
            "<attention>400</attention> Health<br><attention>20</attention> Ability Haste"
@@ -281,8 +281,8 @@ class NormalizeCalc(unittest.TestCase):
         self.assertEqual(normalize_calc(calc)["mult"], {"t": "n", "n": 3})
 
     def test_unknown_part_and_stat_are_unsupported(self):
-        self.assertEqual(normalize_calc(_calc({"mBuffName": "x", "__type": "BuffCounterByCoefficientCalculationPart"}))["parts"],
-                         [{"t": "x", "what": "BuffCounterByCoefficientCalculationPart"}])
+        self.assertEqual(normalize_calc(_calc({"mFoo": "x", "__type": "SomeNewCalculationPart"}))["parts"],
+                         [{"t": "x", "what": "SomeNewCalculationPart"}])
         self.assertEqual(normalize_calc(_calc({"mStat": 15, "mCoefficient": 1.0, "__type": "StatByCoefficientCalculationPart"}))["parts"],
                          [{"t": "x", "what": "mStat 15"}])
 
@@ -646,6 +646,58 @@ class ShownDamage(unittest.TestCase):
         en = {"leveltip": {"label": ["Shield Amount"], "effect": ["{{ shield }} -> {{ x }}"]}}
         rows = level_up(en, {}, {"Shield": [0, 60, 90, 120]}, set(), 3, [60, 90, 120])
         self.assertEqual([r["label"]["en"] for r in rows], ["Shield Amount"])
+
+
+
+class MoreFormulaParts(unittest.TestCase):
+    """Formula parts the engine reads since 2026-11-25 (they were 'unreadable')."""
+
+    def test_level_table(self):
+        part = {"values": [20.0, 30.0, 40.0], "__type": "ByCharLevelFormulaCalculationPart"}
+        self.assertEqual(normalize_part(part), {"t": "lvlTable", "values": [20, 30, 40]})
+
+    def test_effect_value_and_mana(self):
+        self.assertEqual(normalize_part({"mEffectIndex": 2, "__type": "EffectValueCalculationPart"}),
+                         {"t": "v", "name": "Effect2Amount"})
+        self.assertEqual(normalize_part({"mCoefficient": 0.03, "mStatFormula": 2,
+                                         "__type": "AbilityResourceByCoefficientCalculationPart"}),
+                         {"t": "stat", "stat": "mp", "basis": "bonus", "coef": {"t": "n", "n": 0.03}})
+
+    def test_stacks_and_level_forms(self):
+        self.assertEqual(normalize_part({"mBuffName": "{x}", "mCoefficient": 2.0, "__type": "BuffCounterByCoefficientCalculationPart"}),
+                         {"t": "stacks", "coef": {"t": "n", "n": 2}})
+        self.assertEqual(normalize_part({"mBuffName": "{x}", "mDataValue": "PerStack",
+                                         "__type": "BuffCounterByNamedDataValueCalculationPart"}),
+                         {"t": "stacks", "coef": {"t": "v", "name": "PerStack"}})
+        self.assertEqual(normalize_part({"StartDataValue": "S", "EndDataValue": "E", "__type": "{ee18a47b}"}),
+                         {"t": "lerp", "a": {"t": "v", "name": "S"}, "b": {"t": "v", "name": "E"}})
+        self.assertEqual(normalize_part({"{91d404a5}": "Base", "{b2cd0eb0}": "Per", "__type": "{b22609db}"}),
+                         {"t": "perLvl", "base": {"t": "v", "name": "Base"}, "per": {"t": "v", "name": "Per"}})
+
+    def test_formulas_of_another_spell(self):
+        other = {"gnarq": {"DataValues": [{"name": "MiniBase", "values": [0, 5, 45]}], "mSpellCalculations": {
+            "MiniTotalDamage": {"mFormulaParts": [{"mDataValue": "minibase", "__type": "NamedDataValueCalculationPart"},
+                                                  {"mSpellCalculationKey": "Extra", "__type": "{f3cbe7b2}"}],
+                                "__type": "GameCalculation"},
+            "Extra": {"mFormulaParts": [{"mNumber": 1.0, "__type": "NumberCalculationPart"}], "__type": "GameCalculation"}}}}
+        tooltip = "<physicalDamage>{{ spell.gnarq:minitotaldamage }} physical damage</physicalDamage>"
+        spell = _one_spell("Q", "GnarQ", {"en": "Q", "fr": "Q"}, 2, tooltip, {}, other=other.get)
+        self.assertEqual(spell["lines"], [{"type": "physical", "terms": [{"calc": "spell.gnarq:MiniTotalDamage", "kind": "flat"}]}])
+        self.assertEqual(spell["calcs"]["spell.gnarq:MiniTotalDamage"]["parts"],
+                         [{"t": "v", "name": "spell.gnarq:MiniBase"}, {"t": "ref", "name": "spell.gnarq:Extra"}])
+        self.assertIn("spell.gnarq:Extra", spell["calcs"])
+        self.assertEqual(spell["values"], {"spell.gnarq:MiniBase": [0, 5, 45]})
+        self.assertNotIn("unparsed_tooltip", spell["flags"])
+
+    def test_values_case_insensitive_and_effect_amounts(self):
+        bin_spell = {"DataValues": [{"name": "RAPCoefficient", "values": [0, 0.35, 0.35]}],
+                     "mEffectAmount": [{"value": [0, 80, 130], "__type": "SpellEffectAmount"}, {"__type": "SpellEffectAmount"}],
+                     "mSpellCalculations": {"Total": {"mFormulaParts": [
+                         {"mDataValue": "rAPCoefficient", "__type": "NamedDataValueCalculationPart"},
+                         {"mEffectIndex": 1, "__type": "EffectValueCalculationPart"}], "__type": "GameCalculation"}}}
+        spell = _one_spell("R", "X", {"en": "X", "fr": "X"}, 2, "<magicDamage>{{ Total }} magic damage</magicDamage>", bin_spell)
+        self.assertEqual(spell["calcs"]["Total"]["parts"], [{"t": "v", "name": "RAPCoefficient"}, {"t": "v", "name": "Effect1Amount"}])
+        self.assertEqual(spell["values"], {"RAPCoefficient": [0, 0.35, 0.35], "Effect1Amount": [0, 80, 130]})
 
 
 if __name__ == "__main__":

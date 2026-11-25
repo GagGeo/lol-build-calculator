@@ -361,7 +361,7 @@ function createPanel(container, side, onChange) {
 
     fillSelect(ui.champ, champs.slice().sort(byName).map((c) => ({value: c.id, label: nm(c.name)})), state.champ);
     ui.range.value = ui.number.value = state.level;
-    stacksWrap.hidden = !DATA.rules.stackers[state.champ];
+    stacksWrap.hidden = !Engine.usesStacks(DATA, state.champ);
     ui.stacks.value = state.stacks;
 
     const trees = DATA.runes.trees;
@@ -776,7 +776,7 @@ function createOptimizer(section) {
     const champs = Object.values(DATA.champions).slice().sort(byName);
     fillSelect(ui.champ, champs.map((c) => ({value: c.id, label: nm(c.name)})), ui.champ.value || champs[0].id);
     fillSelect(ui.stat, Engine.RANKABLE_STATS.map((k) => ({value: k, label: t('stat_' + k)})), ui.stat.value || 'hp');
-    stacksField.hidden = !DATA.rules.stackers[ui.champ.value];
+    stacksField.hidden = !Engine.usesStacks(DATA, ui.champ.value);
     ui.note.textContent = result ? '' : t('optEmpty');
     resultBox.hidden = !result || !result.rows.length;
     if (!result) return;
@@ -841,11 +841,11 @@ function createOptimizer(section) {
   }
 
   ui.reset.addEventListener('click', () => { excluded = new Set(); render(); });
-  ui.champ.addEventListener('change', () => { stacksField.hidden = !DATA.rules.stackers[ui.champ.value]; });
+  ui.champ.addEventListener('change', () => { stacksField.hidden = !Engine.usesStacks(DATA, ui.champ.value); });
   ui.button.addEventListener('click', () => {
     opts = {champ: ui.champ.value, stat: ui.stat.value, level: Engine.clampLevel(ui.level.value),
       maxGold: Number(ui.gold.value) > 0 ? Number(ui.gold.value) : null, stacked: ui.stacked.checked,
-      stacks: DATA.rules.stackers[ui.champ.value] ? Math.max(0, Math.round(Number(ui.stacks.value)) || 0) : 0, count: 5};
+      stacks: Engine.usesStacks(DATA, ui.champ.value) ? Math.max(0, Math.round(Number(ui.stacks.value)) || 0) : 0, count: 5};
     ui.level.value = opts.level;
     ui.button.disabled = true;
     setTimeout(() => { // let the disabled button paint before the search blocks for a moment

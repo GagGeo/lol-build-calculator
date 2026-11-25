@@ -218,6 +218,21 @@ def _normalize_part(part):
         return {"t": "sum", "parts": [normalize_part(p) for p in part.get("mSubparts", [])]}
     if kind == "ProductOfSubPartsCalculationPart":
         return {"t": "prod", "a": normalize_part(part["mPart1"]), "b": normalize_part(part["mPart2"])}
+    if kind == "ByCharLevelFormulaCalculationPart":  # one value per champion level, from level 1
+        return {"t": "lvlTable", "values": [_num(round(v, 4)) for v in part["values"]]}
+    if kind == "EffectValueCalculationPart":  # the spell's mEffectAmount list (see _data_values)
+        return {"t": "v", "name": f"Effect{part['mEffectIndex']}Amount"}
+    if kind == "AbilityResourceByCoefficientCalculationPart":  # a share of the champion's mana
+        return {"t": "stat", "stat": "mp", "basis": STAT_BASIS.get(part.get("mStatFormula", 0), "total"),
+                "coef": {"t": "n", "n": _num(part.get("mCoefficient", 0))}}
+    if kind == "BuffCounterByCoefficientCalculationPart":  # counted on the champion's stacks
+        return {"t": "stacks", "coef": {"t": "n", "n": _num(part.get("mCoefficient", 0))}}
+    if kind == "BuffCounterByNamedDataValueCalculationPart":
+        return {"t": "stacks", "coef": {"t": "v", "name": part["mDataValue"]}}
+    if kind == "{ee18a47b}":  # unnamed in the game files: level 1 -> 18 between two data values
+        return {"t": "lerp", "a": {"t": "v", "name": part["StartDataValue"]}, "b": {"t": "v", "name": part["EndDataValue"]}}
+    if kind == "{b22609db}":  # unnamed: a data value plus another one per level after the first (Irelia passive)
+        return {"t": "perLvl", "base": {"t": "v", "name": part["{91d404a5}"]}, "per": {"t": "v", "name": part["{b2cd0eb0}"]}}
     if "mSpellCalculationKey" in part:
         return {"t": "ref", "name": part["mSpellCalculationKey"]}
     return {"t": "x", "what": kind}
@@ -249,7 +264,7 @@ def _normalize_calc(calc):
 # --- Spells and damage lines ----------------------------------------------------------------------
 DAMAGE_TAG = re.compile(r"<(physicalDamage|magicDamage|trueDamage)>(.*?)</\1>", re.S)
 PLACEHOLDER = re.compile(r"\{\{(.*?)\}\}|@([^@\s<>]+)@")
-SIMPLE_NAME = re.compile(r"^\s*([A-Za-z_]\w*)\s*(?:\*\s*(-?[\d.]+))?\s*$")
+SIMPLE_NAME = re.compile(r"^\s*((?:spell\.\w+:)?[A-Za-z_]\w*)\s*(?:\*\s*(-?[\d.]+))?\s*$")  # spell.x:name = another spell's
 DAMAGE_TYPES = {"physicalDamage": "physical", "magicDamage": "magic", "trueDamage": "true"}
 # "% max Health", " max Health", "% of the target's missing-Health", ...
 HEALTH_BASE = re.compile(r"^\s*%?\s*(?:of\s+(?:the\s+)?(?:target'?s?\s+|their\s+|its\s+)?)?(max(?:imum)?|current|missing)[- ]Health",
@@ -435,6 +450,10 @@ def _data_values(spell):
         name = dv.get("name") or dv.get("mName")
         if name:
             out[name] = [_num(round(v, 4)) for v in (dv.get("values") or dv.get("mValues") or [])]
+    # Older spells keep per-rank numbers in mEffectAmount; formulas reach them by index (EffectValueCalculationPart).
+    for i, effect in enumerate(spell.get("mEffectAmount") or [], 1):
+        if effect.get("value"):
+            out.setdefault(f"Effect{i}Amount", [_num(round(v, 4)) for v in effect["value"]])
     return out
 
 
@@ -454,11 +473,26 @@ def _resolve_strings(text, strings):
                   lambda m: strings.get(m.group(1).lower(), m.group(0)), text)
 
 
-def _one_spell(key, sid, name, maxrank, tooltip, bin_spell, keep_all=False):
+def _one_spell(key, sid, name, maxrank, tooltip, bin_spell, keep_all=False, other=None):
+    """`other(name)`: another spell's mSpell by its script name (lower case), for tooltips that show
+    {{ spell.name:calc }} (a passive's or another form's formula). Those calcs and values are copied in, prefixed."""
     flags = [] if bin_spell is not None else ["no_cdragon_spell"]
     bin_spell = bin_spell or {}
     values = _data_values(bin_spell)
-    raw_calcs = bin_spell.get("mSpellCalculations") or {}
+    raw_calcs = dict(bin_spell.get("mSpellCalculations") or {})
+    imported = {}  # prefixed calc name -> (prefix, that spell's calc names, its value names by lower case)
+    for ref in sorted(set(re.findall(r"spell\.(\w+):", tooltip.lower()))):
+        source = other(ref) if other else None
+        if not source:
+            continue
+        prefix, source_values = f"spell.{ref}:", _data_values(source)
+        source_calcs = source.get("mSpellCalculations") or {}
+        for vname, arr in source_values.items():
+            values[prefix + vname] = arr
+        for cname, raw in source_calcs.items():
+            raw_calcs[prefix + cname] = raw
+            imported[prefix + cname] = (prefix, set(source_calcs), {k.lower(): k for k in source_values})
+    by_lower = {k.lower(): k for k in values}  # formulas sometimes spell a value's name in another case
     lines, line_flags = parse_damage_lines(tooltip, set(raw_calcs), set(values))
     flags += line_flags
     heals = parse_heal_lines(tooltip, set(raw_calcs), set(values))
@@ -473,11 +507,21 @@ def _one_spell(key, sid, name, maxrank, tooltip, bin_spell, keep_all=False):
         if cname in calcs or cname not in raw_calcs:
             continue
         calcs[cname] = normalize_calc(raw_calcs[cname])
+        if cname in imported:  # names inside another spell's formula point into that spell
+            prefix, source_calcs, source_values = imported[cname]
+
+            def into_source(node):
+                if node.get("t") == "ref" and node["name"] in source_calcs:
+                    node["name"] = prefix + node["name"]
+                elif node.get("t") == "v":
+                    node["name"] = prefix + source_values.get(node["name"].lower(), node["name"])
+            _walk_nodes(calcs[cname], into_source)
 
         def visit(node):
             if node.get("t") == "ref":
                 todo.append(node["name"])
             elif node.get("t") == "v":
+                node["name"] = by_lower.get(node["name"].lower(), node["name"])
                 used_values.add(node["name"])
         _walk_nodes(calcs[cname], visit)
     return {"key": key, "id": sid, "name": name, "maxrank": maxrank,
@@ -606,10 +650,17 @@ def shown_damage(spell, maxrank):
 def build_spells(dd_en, dd_fr, bin_data, record, strings):
     """Passive + Q/W/E/R in DATA spell shape, from a Data Dragon champion, its CommunityDragon file and the string table."""
     lower = {k.lower(): v for k, v in bin_data.items() if isinstance(v, dict)}
+    # Spells by their name in tooltips ({{ spell.name:calc }}): the end of their path, or their script name.
+    by_name = {}
+    for k, v in lower.items():
+        if isinstance(v.get("mSpell"), dict):
+            by_name.setdefault(k.rsplit("/", 1)[-1], v["mSpell"])
+            if v.get("mScriptName"):
+                by_name.setdefault(v["mScriptName"].lower(), v["mSpell"])
     spells = []
     passive_id, entry, tooltip = passive_tooltip(bin_data, record, strings)
     passive = _one_spell("P", passive_id, {"en": dd_en["passive"]["name"], "fr": dd_fr["passive"]["name"]}, 1,
-                         tooltip or "", entry.get("mSpell") if entry else None, keep_all=True)
+                         tooltip or "", entry.get("mSpell") if entry else None, keep_all=True, other=by_name.get)
     if tooltip is None:
         passive["flags"].append("no_tooltip")
     if not entry:
@@ -622,7 +673,7 @@ def build_spells(dd_en, dd_fr, bin_data, record, strings):
         suffix = "/spells/" + names[i].lower() if i < len(names) else None
         entry = next((v for k, v in lower.items() if suffix and k.endswith(suffix)), None)
         spell = _one_spell(key, en["id"], {"en": en["name"], "fr": fr["name"]}, en["maxrank"],
-                           en.get("tooltip", ""), entry.get("mSpell") if entry else None)
+                           en.get("tooltip", ""), entry.get("mSpell") if entry else None, other=by_name.get)
         # Plain description, cooldown and cost per rank ("8/7/6"); cost only when it is paid in the resource.
         spell["desc"] = {"en": en.get("description", ""), "fr": fr.get("description", "")}
         spell["cooldown"] = en.get("cooldownBurn") if en.get("cooldownBurn") not in (None, "", "0") else None

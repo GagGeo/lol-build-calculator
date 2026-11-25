@@ -152,6 +152,38 @@ test('a later per-level breakpoint replaces the earlier rate, and one without a 
 test('level interpolation', () => { near(calc(MIXSPELL, 'Lerp', {level: 1}).value, 40); near(calc(MIXSPELL, 'Lerp', {level: 18}).value, 210); });
 test('ref, sum, product, mult', () => near(calc(MIXSPELL, 'Combined', {rank: 1, level: 18}).value, (1 + 0.5 * 210) * 2));
 test('stat of subpart', () => near(calc(MIXSPELL, 'MaxHp', {bonusHp: 500}).value, 50));
+const NEWSPELL = require('./fixture.js').spell('Q', {
+  values: {S: [0, 10, 10], E: [0, 50, 50], B: [0, 10, 10], P: [0, 3, 3], K: [0, 4, 4]},
+  calcs: {
+    Table: {parts: [{t: 'lvlTable', values: [20, 30, 40]}], pct: false, mult: null, flags: []},
+    Lerp: {parts: [{t: 'lerp', a: {t: 'v', name: 'S'}, b: {t: 'v', name: 'E'}}], pct: false, mult: null, flags: []},
+    PerLvl: {parts: [{t: 'perLvl', base: {t: 'v', name: 'B'}, per: {t: 'v', name: 'P'}}], pct: false, mult: null, flags: []},
+    Stacks: {parts: [{t: 'stacks', coef: {t: 'v', name: 'K'}}], pct: false, mult: null, flags: []},
+  },
+});
+test('level table: value at the level, last one past the end', () => {
+  near(calc(NEWSPELL, 'Table', {level: 2}).value, 30);
+  near(calc(NEWSPELL, 'Table', {level: 18}).value, 40);
+});
+test('level interpolation between two values', () => {
+  near(calc(NEWSPELL, 'Lerp', {level: 1}).value, 10);
+  near(calc(NEWSPELL, 'Lerp', {level: 18}).value, 50);
+});
+test('base plus a value per level after the first', () => {
+  near(calc(NEWSPELL, 'PerLvl', {level: 1}).value, 10);
+  near(calc(NEWSPELL, 'PerLvl', {level: 18}).value, 61);
+});
+test('stacks count the champion stacks', () => {
+  near(Engine.evalCalc(NEWSPELL, 'Stacks', {...ctx(), stacks: 5}).value, 20);
+  near(calc(NEWSPELL, 'Stacks').value, 0);
+  assert.deepEqual(calc(NEWSPELL, 'Stacks').unsupported, []);
+});
+test('usesStacks: stackers, or a spell that counts stacks', () => {
+  assert.ok(Engine.usesStacks(D, 'Veigar'));
+  assert.ok(!Engine.usesStacks(D2, 'Annie'));
+  const d = {...D2, champions: {...D2.champions, Annie: {...D2.champions.Annie, spells: [...D2.champions.Annie.spells, NEWSPELL]}}};
+  assert.ok(Engine.usesStacks(d, 'Annie'));
+});
 test('unsupported node reported', () => assert.deepEqual(calc(MIXSPELL, 'Bad').unsupported, ['BuffCounterByCoefficientCalculationPart']));
 test('ref loop is unsupported, not a crash', () => assert.ok(calc(MIXSPELL, 'Loop').unsupported.length > 0));
 test('missing calc is unsupported', () => assert.deepEqual(calc(MIXSPELL, 'Nope').unsupported, ['missing calc Nope']));

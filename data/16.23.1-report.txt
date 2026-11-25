@@ -225,57 +225,20 @@ Zeri Living Battery
 9923 Hail of Blades
 
 == Spell coverage ==
-spells with damage fully readable: 554/642 (86.3%)
-spells with a self-heal read: 83, fully readable: 71
+spells with damage fully readable: 629/642 (98.0%)
+spells with a self-heal read: 85, fully readable: 76
 
 == Spells with unparsed damage text ==
-Caitlyn P
-Elise P
-Elise W
-Fiora R
-Gnar Q
-Gnar W
-Gnar E
-Illaoi P
-Illaoi Q
-Janna W
-Jayce Q
-Jayce W
-Jayce E
-Khazix Q
-Mel P
 Mel Q
 Mel W
-Naafiri Q
-Pantheon R
-Rammus R
-RekSai E
-Rell W
 Sett W
-Skarner Q
-Smolder Q
-Smolder W
-Smolder E
 Sona P
-TahmKench Q
 Varus Q
-Vex R
-Yunara W
 Zeri P
-Zyra Q
-Zyra E
 
 == Unsupported formula parts (count) ==
-35 unparsed text
-14 missing value
-10 ByCharLevelFormulaCalculationPart
-8 BuffCounterByNamedDataValueCalculationPart
 7 percentage of another base
-7 EffectValueCalculationPart
-6 AbilityResourceByCoefficientCalculationPart
-5 BuffCounterByCoefficientCalculationPart
-5 {ee18a47b}
-1 {b22609db}
+6 unparsed text
 
 == Possible item damage effects (review in rules.py) ==
 1043 Recurve Bow
